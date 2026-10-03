@@ -1,10 +1,11 @@
 import { Game } from '@/types/types';
-import { fetch, ClientOptions } from '@tauri-apps/plugin-http';
 import { tryOnMounted, useAsyncState } from '@vueuse/core';
 import { ref, watch } from 'vue';
 import { message } from '@tauri-apps/plugin-dialog'; 
 import { invoke } from '@tauri-apps/api/core';
 import { useGlobalState } from './app-state';
+import customGamesJson from '../assets/custom-games.json';
+import { withFallbackExecutable } from '@/utils/fallback-executable';
 
 export function useFetchGameList() {
     const { addLog } = useGlobalState();
@@ -19,7 +20,6 @@ export function useFetchGameList() {
         return response as Game[] | unknown[] | undefined;
     };
 
-    // const fetchBundledGameList = fetch(window.location.origin+'/gamelist.json', { method: 'GET' });
 
     const { 
         state: gameListGHMirror,
@@ -79,36 +79,57 @@ export function useFetchGameList() {
     });
 
     let timeoutId: ReturnType<typeof setTimeout> | null = null;
-    async function fetchGameList() { 
+    async function fetchGameList() {
         allFetchDone.value = false;
+        fetchError.value = null;
         addLog('Fetching game list...');
-        // try fetching from the Github mirror first, then Discord. Use bundled as fallback.
-        try {
-           await Promise.all([executeGH(), executeBundled()]);
-        } catch {
-            addLog('error', 'Error executing fetch for GitHub mirror or bundled game list.');
-        }
 
-        if (errorGH.value) { 
-            fetchError.value = 'Error fetching game list from GitHub mirror.';
-            addLog('error','Error fetching game list from GitHub mirror');
+        // Priority: Discord API (most up to date) -> GitHub mirror -> bundled JSON (last resort).
+        let source: Game[] | null = null;
+
+        try {
             await executeDiscord();
-            if (errorDiscord.value) {
-                fetchError.value = 'Error fetching game list from Discord.';
-                addLog('error','Error fetching game list from Discord:');
-                if (errorBundled.value) {
-                    fetchError.value = 'Error fetching bundled game list.';
-                    addLog('error','Error fetching bundled game list:');
-                }
+        } catch {
+            addLog('error', 'Error executing fetch for Discord game list.');
+        }
+        if (!errorDiscord.value && isValidGameList(gameListFromDiscord.value)) {
+            source = gameListFromDiscord.value as Game[];
+            addLog('Using game list from Discord. ' + source.length + ' entries.');
+        } else {
+            addLog('error', 'Error fetching game list from Discord, trying GitHub mirror');
+
+            try {
+                await executeGH();
+            } catch {
+                addLog('error', 'Error executing fetch for GitHub mirror game list.');
+            }
+            if (!errorGH.value && isValidGameList(gameListGHMirror.value)) {
+                source = gameListGHMirror.value as Game[];
+                addLog('Using game list from GitHub mirror. ' + source.length + ' entries.');
+            } else {
+                addLog('error', 'Error fetching game list from GitHub mirror, using bundled list');
             }
         }
-        // silently log error for bundled, as it's the last resort.
-        if (errorBundled.value) {
-            addLog('error','Error fetching bundled game list');
+
+        if (!source) {
+            try {
+                await executeBundled();
+            } catch {
+                addLog('error', 'Error executing fetch for bundled game list.');
+            }
+            if (!errorBundled.value && isValidGameList(bundledGameList.value)) {
+                source = bundledGameList.value as Game[];
+                addLog('Using bundled game list as fallback. ' + source.length + ' entries.');
+                fetchError.value = 'Could not reach Discord or the GitHub mirror, using the bundled list.';
+            } else {
+                source = [];
+                fetchError.value = 'Error fetching the game list.';
+                addLog('error', 'Error fetching bundled game list');
+            }
         }
 
         if (fetchError.value) {
-            await message('There was an error fetching the latest game list.' + fetchError.value, {
+            await message('There was an error fetching the latest game list. ' + fetchError.value, {
                 title: 'Game List Fetch Error',
                 kind: 'error',
                 buttons: {
@@ -117,17 +138,19 @@ export function useFetchGameList() {
             });
         }
 
-        if (gameListGHMirror.value && gameListGHMirror.value?.length > 0 && isValidGameList(gameListGHMirror.value)) {
-            gameDB.value = gameListGHMirror.value as Game[] || [];
-            addLog('Using game list from GitHub mirror. ' + gameListGHMirror.value.length + ' entries.');
-        } else if (gameListFromDiscord.value && gameListFromDiscord.value?.length > 0 && isValidGameList(gameListFromDiscord.value)) {
-            gameDB.value = gameListFromDiscord.value as Game[] || [];
-            addLog('Using game list from Discord. ' + gameListFromDiscord.value.length + ' entries.');
-        } else {
-            // bundled is always present.
-            addLog('Using bundled game list as fallback.' + bundledGameList.value.length + ' entries.');
-            gameDB.value = bundledGameList.value;
+        gameDB.value = source;
+
+        // Merge locally maintained entries (e.g. newly launched games not yet in Discord's list).
+        // Custom entries win over fetched ones with the same id.
+        const customGames = customGamesJson as Game[];
+        if (customGames.length > 0) {
+            const customIds = new Set(customGames.map(g => g.id));
+            gameDB.value = [...gameDB.value.filter(g => !customIds.has(g.id)), ...customGames];
+            addLog('Merged ' + customGames.length + ' custom game(s).');
         }
+
+        // Games with no registered executables get a generated one so they can still be launched.
+        gameDB.value = gameDB.value.map(withFallbackExecutable);
 
         // Set a timeout to delay setting allFetchDone to true, to allow UI to update.
       

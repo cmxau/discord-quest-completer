@@ -8,6 +8,8 @@ export interface GameExecutable {
   segments?: number;
   is_running?: boolean;
   is_installed?: boolean;
+  /** Generated from the game title because Discord lists no executables for it. */
+  is_auto_generated?: boolean;
 }
 export interface Game {
     uid?: string;
@@ -16,6 +18,7 @@ export interface Game {
     executables: GameExecutable[];
     aliases?: string[];
     themes?: string[];
+    third_party_skus?: { distributor: string; id: string }[];
     is_running?: boolean;
     is_installed?: boolean;
 }
