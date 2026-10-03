@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use tauri::{path::BaseDirectory, AppHandle, Emitter, Listener, Manager};
 
+mod processes;
 mod rpc;
 mod runner;
 mod steam;
@@ -97,7 +98,10 @@ async fn run_background_process(
     cmd.args(["--title", name]).current_dir(game_folder_path);
 
     match cmd.spawn() {
-        Ok(_) => Ok("Process started successfully".to_string()),
+        Ok(child) => {
+            processes::register_child(executable_name, child);
+            Ok("Process started successfully".to_string())
+        }
         Err(e) => Err(format!("Failed to start process: {}", e)),
     }
 }
@@ -299,7 +303,7 @@ async fn launch_steam_game(
         .current_dir(&prepared.game_dir)
         .spawn()
     {
-        Ok(_) => {}
+        Ok(child) => processes::register_child(&file_name, child),
         Err(e) => {
             let _ = steam::cleanup_fake(&steamapps, &registry, &steam_id);
             return Err(format!("Failed to start process: {}", e));
@@ -357,6 +361,7 @@ pub fn run() {
             stop_process,
             connect_to_discord_rpc_3,
             run_background_process,
+            processes::running_exes,
             fetch_gamelist_gh_mirror,
             fetch_gamelist_from_discord,
             steam_game_info,

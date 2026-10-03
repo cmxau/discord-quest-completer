@@ -10,6 +10,7 @@ import IconVerified from '@/components/IconVerified.vue';
 import { isEmpty } from 'lodash-es';
 import GameExecutables from '@/components/GameExecutables.vue';
 import SteamLaunch from '@/components/SteamLaunch.vue';
+import { useRunningState } from '@/composables/running-state';
 import { GameActionsKey } from '@/constants/constants';
 import { path } from '@tauri-apps/api';
 import { emit } from '@tauri-apps/api/event';
@@ -59,8 +60,6 @@ const debouncedSearchQuery = refDebounced(searchQuery, 300)
 const searchResultsIsOpen = ref(false);
 const isOnSearchResults = ref(false);
 
-// Game status
-const currentlyPlaying = ref<string | null>(null);
 
 
 onClickOutside(searchResultContainerRef, () => {
@@ -109,6 +108,10 @@ const { results: searchResults } = useFuse(debouncedSearchQuery, gameDB, fuseOpt
 
 // Selected games list
 const gameList = ref<Game[]>([]);
+// Which games are running, kept in sync with the real processes.
+const { rpcGameUid, playingGames, recomputeRunning } = useRunningState(gameList);
+// The status panel shows one game; the sidebar redesign lists all of them.
+const currentlyPlaying = computed(() => playingGames.value[0]?.id ?? null);
 // const selectedGame = ref<Game | null>(null);
 const selectedGameId = ref<string | null | undefined>(null);
 
@@ -238,7 +241,6 @@ async function playGame({game, executable}: {game: Game, executable: GameExecuta
         console.log(`Playing game: ${gameUid}`);
         addLog('info', `Playing game: ${game.name}`);
         addLog('info', `Executable: ${executable.name}`);
-        currentlyPlaying.value = game.id;
         // find the game in the list
         const gameToPlay = gameList.value.find(g => g.uid === gameUid);
         const executableItem = gameToPlay?.executables.find(exe => exe.name === executable.name);
@@ -270,7 +272,6 @@ async function stopPlaying({game, executable}: {game: Game, executable: GameExec
     console.log('Stopped playing game');
     const gameUid = game.uid;
     
-    currentlyPlaying.value = null;
 
     const gameToPlay = gameList.value.find(g => g.uid === gameUid);
     const executableItem = gameToPlay?.executables.find(exe => exe.name === executable.name);
@@ -286,11 +287,11 @@ async function stopPlaying({game, executable}: {game: Game, executable: GameExec
             const errorMessage = (error instanceof Error) ? error.message : String(error);
             addLog('error', 'Failed to stop game process' + errorMessage);
             // Even if stopping fails, we still update the state
-            gameToPlay.is_running = false;
             executableItem.is_running = false;
+            recomputeRunning(gameToPlay);
         } finally {
-            gameToPlay.is_running = false;
             executableItem.is_running = false;
+            recomputeRunning(gameToPlay);
         }
     }
 }
@@ -318,8 +319,8 @@ async function handleTestRPC(game: Game | null) {
         emit('event_disconnect');
         
         isConnectedToRPC.value = false;
-        game!.is_running = false;
-        currentlyPlaying.value = null;
+        rpcGameUid.value = null;
+        recomputeRunning(game!);
         isConnecting.value = false;
         return;
     }
@@ -344,8 +345,8 @@ async function continueRPCRisk(game: Game | null) {
         })
         .then(() => {
             isConnectedToRPC.value = true;
-            gameToTest.is_running = true;
-            currentlyPlaying.value = gameToTest.id;
+            rpcGameUid.value = gameToTest.uid ?? null;
+            recomputeRunning(gameToTest);
             isConnecting.value = false;
         })
 
