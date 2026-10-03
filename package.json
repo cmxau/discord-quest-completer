@@ -9,11 +9,7 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "build:runner:win": "cd ./src-win && cargo build --release && cd ..",
-    "copy:runner:win": "cp ./src-win/target/release/src-win.exe ./src-tauri/resources/src-win.exe",
-    "build:runner:linux": "cd ./src-linux && cargo build --release && cd ..",
-    "copy:runner:linux": "cp ./src-linux/target/release/src-linux ./src-tauri/resources/src-linux",
-    "build:runner:darwin": "cd ./src-darwin && cargo build --release && cd ..",
-    "copy:runner:darwin": "cp ./src-darwin/target/release/src-darwin ./src-tauri/resources/src-darwin",
+    "copy:runner:win": "node scripts/sync-runner.mjs",
     "sync:runner": "node scripts/sync-runner.mjs",
     "tauri:dev": "tauri dev"
   },

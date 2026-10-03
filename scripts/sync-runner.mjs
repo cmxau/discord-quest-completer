@@ -1,23 +1,18 @@
 #!/usr/bin/env node
+// Builds the Windows dummy-game runner (src-win) and copies it into src-tauri/resources/.
 import { spawnSync } from "node:child_process";
+import { copyFileSync, mkdirSync } from "node:fs";
 
-const isWindows = process.platform === "win32";
-const isDarwin = process.platform === "darwin";
-
-function run(command, args) {
-  const result = spawnSync(command, args, { stdio: "inherit", shell: false });
-  if (result.status !== 0) {
-    process.exit(result.status ?? 1);
-  }
-}
-
-if (isWindows) {
-  run("pnpm", ["run", "build:runner:win"]);
-  run("pnpm", ["run", "copy:runner:win"]);
-} else if (isDarwin) {
-  run("pnpm", ["run", "build:runner:darwin"]);
-  run("pnpm", ["run", "copy:runner:darwin"]);
-} else {
-  console.error(`Unsupported platform for runner sync: ${process.platform}`);
+if (process.platform !== "win32") {
+  console.error(`This project only supports Windows (current platform: ${process.platform})`);
   process.exit(1);
 }
+
+const build = spawnSync("cargo", ["build", "--release"], { cwd: "src-win", stdio: "inherit", shell: false });
+if (build.status !== 0) {
+  process.exit(build.status ?? 1);
+}
+
+mkdirSync("src-tauri/resources", { recursive: true });
+copyFileSync("src-win/target/release/src-win.exe", "src-tauri/resources/src-win.exe");
+console.log("Copied src-win.exe to src-tauri/resources/");
