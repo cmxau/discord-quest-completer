@@ -1,5 +1,20 @@
 @import "tailwindcss";
 
+/* Dark mode is driven by a `dark` class on <html> (toggled from the header), not the OS setting. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+html { color-scheme: light; }
+html.dark { color-scheme: dark; }
+
+@layer base {
+  html, body { font-family: ui-sans-serif, system-ui, "Segoe UI Variable", "Segoe UI", Inter, sans-serif; }
+  body { @apply bg-zinc-50 text-zinc-700 antialiased dark:bg-zinc-950 dark:text-zinc-300; }
+  button { @apply cursor-pointer disabled:cursor-not-allowed disabled:opacity-50; }
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-thumb { background-color: var(--color-zinc-300); border: 2px solid transparent; border-radius: 9999px; background-clip: content-box; }
+  .dark ::-webkit-scrollbar-thumb { background-color: var(--color-zinc-700); }
+}
+
 @layer components {
   .card { @apply rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-900; }
   .card-title { @apply text-base font-semibold text-zinc-900 dark:text-white; }

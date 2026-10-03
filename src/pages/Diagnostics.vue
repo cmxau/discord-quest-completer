@@ -1,17 +1,23 @@
 <template>
-    <div class="p-4 space-y-4 container mx-auto">
-        <button class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded"
-            @click="discordTest">Discord Test
-
-            connected: {{ isConnected }}
-        </button>
+    <div class="mx-auto max-w-4xl space-y-4 p-6">
+        <div class="card flex items-center justify-between gap-4">
+            <div>
+                <h2 class="card-title">Discord connection test</h2>
+                <p class="mt-0.5 flex items-center gap-1.5 text-xs text-zinc-500 dark:text-zinc-400">
+                    <span class="h-1.5 w-1.5 rounded-full" :class="isConnected ? 'animate-pulse bg-emerald-500' : 'bg-zinc-400'"></span>
+                    {{ isConnected ? 'Connected' : 'Disconnected' }}
+                </p>
+            </div>
+            <button :class="isConnected ? 'btn-danger' : 'btn-primary'" @click="discordTest">
+                {{ isConnected ? 'Disconnect' : 'Connect' }}
+            </button>
+        </div>
 
         <!-- Logs Section -->
-        <div class="mt-4 p-4 border rounded text-gray-700 dark:text-gray-300 dark:border-gray-600">
-            <div class="flex items-center justify-between mb-2">
-                <h2 class="text-lg font-semibold mb-2">Logs</h2>
-                <button class="mt-2 font-bold py-1 px-3 rounded dark:bg-gray-700 bg-gray-300 hover:bg-gray-400 text-sm"
-                    @click="clearLogs">Clear Logs</button>
+        <div class="card text-zinc-700 dark:text-zinc-300">
+            <div class="mb-2 flex items-center justify-between">
+                <h2 class="card-title">Logs</h2>
+                <button class="btn-ghost !px-3 !py-1 text-xs" @click="clearLogs">Clear logs</button>
             </div>
 
             <div class="max-h-64 overflow-y-auto p-2 rounded">
@@ -60,7 +66,8 @@ const { logs, addLog, clearLogs } = useGlobalState();
 
 function discordTest() {
 
-    const appIdCode = '1361728268088381706';
+    // The "Playing <name>" label comes from this application's registered name (Counter-Strike 2).
+    const appIdCode = '1158877933042143272';
 
     if (isConnected.value) {
         console.log('Disconnecting from Discord');
@@ -72,13 +79,11 @@ function discordTest() {
     invoke('connect_to_discord_rpc_3', {
         activity_json: JSON.stringify({
             app_id: appIdCode,
-            details: 'Jhabol',
-            // details: 'xmonad -> dwm -> spectrwm -> i3 -> bspwm -> qtile -> hyrpland -> xfce -> gnome -> sway',
-            state: "/jhabol",
-            activity_kind: ActivityKind.Watching,
-            timestamp: createAgoTimestamp('1h 30m')
+            details: 'Competitive',
+            state: 'In a match',
+            activity_kind: ActivityKind.Playing,
+            timestamp: createAgoTimestamp('25m')
         }),
-        action: 'connect',
     });
     isConnected.value = true;
 }

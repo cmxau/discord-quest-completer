@@ -2,7 +2,7 @@
 import MainLayout from './components/MainLayout.vue';
 import { Pages, useGlobalState } from './composables/app-state';
 import HomeView from './pages/HomeView.vue';
-import Playground from './pages/Playground.vue';
+import Diagnostics from './pages/Diagnostics.vue';
 
 const appState = useGlobalState();
 const { page } = appState;
@@ -12,7 +12,7 @@ const { page } = appState;
 <template>
   <MainLayout>
     <HomeView v-show="page === Pages.HOME"/>
-    <Playground v-show="page === Pages.PLAYGROUND"/>
+    <Diagnostics v-show="page === Pages.DIAGNOSTICS"/>
   </MainLayout>
 </template>
 

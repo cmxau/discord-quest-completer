@@ -3,7 +3,7 @@ import { computed, ComputedRef, Ref, ShallowRef, shallowRef } from 'vue'
 
 export const Pages = {
     HOME: 'home',
-    PLAYGROUND: 'playground',
+    DIAGNOSTICS: 'diagnostics',
 } as const
 export type Pages = typeof Pages[keyof typeof Pages]
 export interface AppLogObject {
@@ -23,6 +23,9 @@ export interface UseGlobalStateReturn {
         (newLog: string): void;
     };
     clearLogs: () => void,
+    refreshRequest: ShallowRef<number>,
+    isGameListLoading: ShallowRef<boolean>,
+    requestGameListRefresh: () => void,
 }
 export const useGlobalState = createGlobalState(
   () => {
@@ -30,6 +33,13 @@ export const useGlobalState = createGlobalState(
     const page = shallowRef<Pages>(Pages.HOME)
 
     const logs = shallowRef<AppLogObject[]>([])
+
+    // game list refresh: header button bumps the counter, HomeView watches it
+    const refreshRequest = shallowRef(0)
+    const isGameListLoading = shallowRef(false)
+    function requestGameListRefresh() {
+      refreshRequest.value++
+    }
 
     const count = shallowRef(0)
 
@@ -67,7 +77,10 @@ export const useGlobalState = createGlobalState(
         increment,
         logs,
         addLog,
-        clearLogs
+        clearLogs,
+        refreshRequest,
+        isGameListLoading,
+        requestGameListRefresh
     } as UseGlobalStateReturn
   }
 )

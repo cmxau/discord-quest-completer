@@ -5,7 +5,6 @@ export interface GameExecutable {
   os: string;
   filename?: string;
   path?: string;
-  segments?: number;
   is_running?: boolean;
   is_installed?: boolean;
   /** Generated from the game title because Discord lists no executables for it. */
@@ -26,8 +25,6 @@ export interface Game {
 }
 
 export interface GameActionsProvider {
-  canPlayGame: (game: Game | null) => boolean;
-  isGameInstalled: (game: Game | null) => boolean;
   isExecutableRunning: (executable: GameExecutable) => boolean;
   isGameExecutableInstalled: (executable: GameExecutable) => boolean;
 }
