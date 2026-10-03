@@ -32,4 +32,5 @@ The runner must be built and copied to `src-tauri/resources/` **before** `tauri 
 
 - Versions in `package.json`, `src-tauri/Cargo.toml` and `src-tauri/tauri.conf.json` should be kept in sync.
 - The app writes game folders next to its executable, so it needs a writable install location. Steam fakes are recorded in `%APPDATA%\io.github.cmxau.discordquestcompleter\steam_fakes.json`.
+- The app icon is drawn by `scripts/make-icon.ps1` into `src-tauri/icons/app-icon-source.png`; regenerate all sizes with `pnpm tauri icon src-tauri/icons/app-icon-source.png` (then delete the generated `android/` and `ios/` folders).
 - `.github/workflows/` has CI, a tag-triggered release, and a daily Pages job that publishes the game-list mirror.

@@ -87,7 +87,7 @@ pnpm tauri build                                        # production build and i
 ├── src/             Vue 3 + TypeScript frontend (components, composables, pages, utils)
 ├── src-tauri/       Tauri backend in Rust (process control, Steam library, Discord RPC)
 ├── runner/          The dummy game window (a tiny Win32 executable)
-├── scripts/         Build helper that compiles and bundles the runner
+├── scripts/         Build helpers: bundle the runner, regenerate the app icon
 ├── docs/            Documentation
 └── .github/         CI, release and Pages workflows, issue templates
 ```
