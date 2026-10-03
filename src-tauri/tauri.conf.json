@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Discord Quest Completer",
-  "version": "25.4.18",
-  "identifier": "me.markterence.discordquestcompleter",
+  "version": "26.10.0",
+  "identifier": "io.github.cmxau.discordquestcompleter",
   "build": {
     "beforeDevCommand": "pnpm dev",
     "devUrl": "http://localhost:1420",
@@ -40,6 +40,11 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
+    "publisher": "cmxau",
+    "copyright": "Copyright (c) 2026 cmxau. Original work Copyright (c) 2025 Mark Terence Tiglao.",
+    "license": "MIT",
+    "licenseFile": "../LICENSE",
+    "homepage": "https://github.com/cmxau/discord-quest-completer",
     "resources": [
       "resources/*"
     ]

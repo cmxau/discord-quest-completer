@@ -228,7 +228,7 @@ async fn fetch_text(url: &str) -> Result<tauri::ipc::Response, String> {
 
 #[tauri::command(rename_all = "snake_case")]
 async fn fetch_gamelist_gh_mirror() -> Result<tauri::ipc::Response, String> {
-    fetch_text("https://markterence.github.io/discord-quest-completer/detectable.json").await
+    fetch_text("https://cmxau.github.io/discord-quest-completer/detectable.json").await
 }
 
 #[tauri::command(rename_all = "snake_case")]
@@ -345,7 +345,6 @@ async fn stop_steam_game(handle: AppHandle, steam_id: String, exe_filename: Stri
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_http::init())
         .setup(|app| {
             // Remove fake Steam installs left behind if the app was closed while a game was running.
             if let (Some(steamapps), Ok(registry)) = (steam::find_steamapps_dir(), steam_registry_path(app.handle())) {

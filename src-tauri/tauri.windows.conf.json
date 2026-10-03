@@ -1,7 +1,7 @@
 {
   "bundle": {
     "resources": {
-      "resources/src-win.exe": "data/src-win.exe"
+      "resources/quest-runner.exe": "data/quest-runner.exe"
     }
   }
 }

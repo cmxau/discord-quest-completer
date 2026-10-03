@@ -7,23 +7,6 @@
   ],
   "permissions": [
     "core:default",
-    {
-      "identifier": "http:default",
-      "allow": [
-        {
-          "url": "https://markterence.github.io"
-        },
-        {
-          "url": "https://discord.com"
-        },
-        {
-          "url": "http://asset.localhost"
-        },
-        {
-          "url": " http://tauri.localhost"
-        }
-      ]
-    },
     "dialog:default"
   ]
 }

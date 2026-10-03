@@ -1,13 +1,16 @@
 [package]
-name = "src-win"
+name = "quest-runner"
 version = "0.2.0"
+description = "Tiny dummy game window used by Discord Quest Completer"
+license = "MIT"
+publish = false
 edition = "2021"
 
 [build-dependencies]
 cc = "1.0"
 
 [[bin]]
-name = "src-win"
+name = "quest-runner"
 path = "src/main.rs"
 
 [profile.release]

@@ -1,15 +1,27 @@
 {
-  "name": "tauri-app",
+  "name": "discord-quest-completer",
+  "version": "26.10.0",
   "private": true,
-  "version": "25.10.7",
+  "description": "Complete Discord Quests without installing the games",
+  "license": "MIT",
+  "author": "cmxau (https://github.com/cmxau)",
+  "homepage": "https://github.com/cmxau/discord-quest-completer",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cmxau/discord-quest-completer.git"
+  },
+  "bugs": {
+    "url": "https://github.com/cmxau/discord-quest-completer/issues"
+  },
   "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "dev": "vite",
     "build": "vue-tsc --noEmit && vite build",
     "preview": "vite preview",
     "tauri": "tauri",
-    "build:runner:win": "cd ./src-win && cargo build --release && cd ..",
-    "copy:runner:win": "node scripts/sync-runner.mjs",
     "sync:runner": "node scripts/sync-runner.mjs"
   },
   "dependencies": {

@@ -753,7 +753,7 @@ dependencies = [
 
 [[package]]
 name = "discord-quest-completer"
-version = "25.10.7"
+version = "26.10.0"
 dependencies = [
  "discord-sdk",
  "once_cell",

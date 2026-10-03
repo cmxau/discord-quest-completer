@@ -5,7 +5,7 @@ fn main() {
     tauri_build::build();
 
     // Check that the Windows runner exists
-    let resource_path = PathBuf::from("resources").join("src-win.exe");
+    let resource_path = PathBuf::from("resources").join("quest-runner.exe");
 
     // Tell cargo to rerun if the resource file changes
     if resource_path.exists() {

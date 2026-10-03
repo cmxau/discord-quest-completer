@@ -1,0 +1,20 @@
+# Normalise line endings: LF in the repository, native endings in the working tree.
+* text=auto
+
+# Always LF
+*.sh text eol=lf
+*.mjs text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+
+# Binary
+*.png binary
+*.ico binary
+*.icns binary
+*.exe binary
+
+# The bundled game list is large generated data: keep it out of diffs and language stats.
+src/assets/gamelist.json -diff linguist-generated
+pnpm-lock.yaml -diff linguist-generated
+src-tauri/Cargo.lock -diff linguist-generated
+runner/Cargo.lock -diff linguist-generated
