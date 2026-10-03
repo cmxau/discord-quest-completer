@@ -14,12 +14,6 @@ dependencies:
   '@tauri-apps/plugin-dialog':
     specifier: ~2
     version: 2.4.0
-  '@tauri-apps/plugin-http':
-    specifier: ~2
-    version: 2.5.2
-  '@tauri-apps/plugin-opener':
-    specifier: ^2
-    version: 2.2.5
   '@vueuse/core':
     specifier: ^13.1.0
     version: 13.1.0(vue@3.5.13)
@@ -684,18 +678,6 @@ packages:
 
   /@tauri-apps/plugin-dialog@2.4.0:
     resolution: {integrity: sha512-OvXkrEBfWwtd8tzVCEXIvRfNEX87qs2jv6SqmVPiHcJjBhSF/GUvjqUNIDmKByb5N8nvDqVUM7+g1sXwdC/S9w==}
-    dependencies:
-      '@tauri-apps/api': 2.8.0
-    dev: false
-
-  /@tauri-apps/plugin-http@2.5.2:
-    resolution: {integrity: sha512-x1mQKHSLDk4mS2S938OTeyk8L7QyLpCrKZCZcjkljGsvTvRMojCvI9SeJ1kaxc7t8xSilkC7WdId8xER9TIGLg==}
-    dependencies:
-      '@tauri-apps/api': 2.8.0
-    dev: false
-
-  /@tauri-apps/plugin-opener@2.2.5:
-    resolution: {integrity: sha512-hHsJ9RPWpZvZEPVFaL+d25gABMUMOf/A6ESXnvf/ii9guTukj58WXsAE/SOysXRIhej7kseRCxnOnIMpSCdUsQ==}
     dependencies:
       '@tauri-apps/api': 2.8.0
     dev: false

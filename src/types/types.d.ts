@@ -19,6 +19,8 @@ export interface Game {
     aliases?: string[];
     themes?: string[];
     third_party_skus?: { distributor: string; id: string }[];
+    /** File name of the dummy exe running from the Steam library (set while launched that way). */
+    steam_exe?: string;
     is_running?: boolean;
     is_installed?: boolean;
 }

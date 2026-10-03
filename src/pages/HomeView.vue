@@ -9,6 +9,7 @@ import { GameActionsProvider, GameExecutable, type Game } from '@/types/types';
 import IconVerified from '@/components/IconVerified.vue';
 import { isEmpty } from 'lodash-es';
 import GameExecutables from '@/components/GameExecutables.vue';
+import SteamLaunch from '@/components/SteamLaunch.vue';
 import { GameActionsKey } from '@/constants/constants';
 import { path } from '@tauri-apps/api';
 import { emit } from '@tauri-apps/api/event';
@@ -202,7 +203,7 @@ async function createDummyGame(game: Game | null, executable: GameExecutable) {
             path: executable.path,
             executable_name: executable.filename,
             path_len: executable.segments,
-            app_id: Number(gameToInstall.id),
+            app_id: gameToInstall.id,
             display_name: gameToInstall.name,
         }
         console.log(payload);
@@ -247,7 +248,7 @@ async function playGame({game, executable}: {game: Game, executable: GameExecuta
                 path: executable.path,
                 executable_name: executable.filename,
                 path_len: executable.segments,
-                app_id: Number(gameToPlay.id),
+                app_id: gameToPlay.id,
                 exec_path: path.join(executable.path!, executable.filename!),
             } 
             await invoke('run_background_process', payload);
@@ -658,6 +659,7 @@ provide<GameActionsProvider>(GameActionsKey, {
                         @stop="stopPlaying"
                         @install_and_play="installAndPlay"
                     />
+                    <SteamLaunch v-if="selectedGame" :game="selectedGame" />
 
                     <!-- <button @click="playGame(selectedGame)" :disabled="!canPlayGame(selectedGame)"
                         class="w-full py-2 rounded-lg" :class="[
