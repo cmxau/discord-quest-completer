@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build-and-test:
+    name: Build and test (Windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: pnpm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            src-tauri
+            runner
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # The Rust crate embeds the built frontend and bundles the runner, so both must exist first.
+      - name: Type-check and build the frontend
+        run: pnpm build
+
+      - name: Build the dummy game runner
+        run: pnpm sync:runner
+
+      - name: Rust tests
+        run: cargo test --lib --manifest-path src-tauri/Cargo.toml

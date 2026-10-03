@@ -1,0 +1,95 @@
+name: Release
+
+# Builds the installers and a portable zip and attaches them to a DRAFT GitHub release.
+#   - push a tag such as `v26.10.0`, or
+#   - run the workflow manually and enter the tag to create.
+# Review the draft, then publish it.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to release, e.g. v26.10.0"
+        required: true
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+  TAG: ${{ inputs.tag || github.ref_name }}
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: pnpm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            src-tauri
+            runner
+
+      # Ship the newest game list as the offline fallback. Keep the committed copy if this fails.
+      - name: Refresh the bundled game list
+        continue-on-error: true
+        shell: bash
+        run: |
+          curl -fsSL --retry 3 -o gamelist.new.json "https://discord.com/api/v10/applications/detectable"
+          jq -e 'type == "array" and length > 1000' gamelist.new.json > /dev/null
+          mv gamelist.new.json src/assets/gamelist.json
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build the dummy game runner
+        run: pnpm sync:runner
+
+      # Runs `pnpm build` first (beforeBuildCommand), then produces the NSIS and MSI installers.
+      - name: Build the app
+        run: pnpm tauri build
+
+      - name: Create the portable zip
+        shell: pwsh
+        run: |
+          $release = "src-tauri/target/release"
+          $name = "discord-quest-completer-win-x64-$env:TAG"
+          New-Item -ItemType Directory -Force -Path "portable/$name" | Out-Null
+          Copy-Item "$release/discord-quest-completer.exe" "portable/$name/"
+          Copy-Item "$release/data" "portable/$name/data" -Recurse
+          Copy-Item "$release/resources" "portable/$name/resources" -Recurse
+          Copy-Item LICENSE, README.md "portable/$name/"
+          Compress-Archive -Path "portable/$name" -DestinationPath "portable/$name.zip"
+          "PORTABLE_ZIP=portable/$name.zip" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Create the draft release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.TAG }}
+          name: Discord Quest Completer ${{ env.TAG }}
+          draft: true
+          generate_release_notes: true
+          body: |
+            ### Downloads
+            - **Installer:** `*-setup.exe` (recommended) or `.msi`
+            - **Portable:** `discord-quest-completer-win-x64-*.zip`. Extract it somewhere you can write to.
+
+            ### Disclaimer
+            This tool is intended for educational purposes and personal use. Please respect Discord's terms of service and game publishers' rights. The authors are not liable for any damages, account suspensions or other consequences of using this software. Use at your own risk. This project is not affiliated with, endorsed by, or connected to Discord.
+          files: |
+            ${{ env.PORTABLE_ZIP }}
+            src-tauri/target/release/bundle/nsis/*.exe
+            src-tauri/target/release/bundle/msi/*.msi

@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Original project
+    url: https://github.com/markterence/discord-quest-completer
+    about: This project builds on the original by Mark Terence Tiglao. Its issues and discussions are a useful reference.

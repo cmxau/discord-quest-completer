@@ -1,0 +1,42 @@
+name: Update game list mirror
+
+# Publishes Discord's detectable-games list to GitHub Pages. The app falls back to this mirror
+# (https://cmxau.github.io/discord-quest-completer/detectable.json) when Discord's API is unreachable.
+# One-time setup: repository Settings > Pages > Source: "GitHub Actions".
+
+on:
+  schedule:
+    - cron: "0 0 * * *" # every day at midnight UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Fetch the game list from Discord
+        run: |
+          mkdir -p dist
+          curl -fsSL --retry 3 -o dist/detectable.json "https://discord.com/api/v10/applications/detectable"
+          # Never publish an empty or malformed list over a good one.
+          jq -e 'type == "array" and length > 1000' dist/detectable.json > /dev/null
+          echo "Fetched $(jq length dist/detectable.json) games"
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./dist
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
