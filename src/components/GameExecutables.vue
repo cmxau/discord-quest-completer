@@ -34,10 +34,11 @@
 
                 <button class="rounded-lg px-4 py-1.5 text-xs font-medium transition"
                     :class="gameActions?.isExecutableRunning(executable)
-                        ? 'bg-red-500/10 text-red-500 hover:bg-red-500/20'
+                        ? 'cursor-default bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
                         : 'bg-indigo-600 text-white hover:bg-indigo-500'"
+                    :disabled="gameActions?.isExecutableRunning(executable)"
                     @click="handleLaunch(executable)">
-                    {{ gameActions?.isExecutableRunning(executable) ? 'Stop' : 'Play' }}
+                    {{ gameActions?.isExecutableRunning(executable) ? 'Running' : 'Play' }}
                 </button>
             </div>
         </div>
@@ -57,7 +58,6 @@ const props = defineProps<{
 
 const emit = defineEmits<{
     play: [{game: Game, executable: GameExecutable}]
-    stop: [{game: Game, executable: GameExecutable}]
     install_and_play: [{game: Game, executable: GameExecutable}]
 }>();
 
@@ -87,6 +87,7 @@ function getExecutablePath(executable: GameExecutable) {
     return executableDirectory(executable.name, path.sep());
 }
 
+// Stopping is handled from the sidebar status card, so this only starts executables.
 function handleLaunch(executable: GameExecutable) {
     const payload = {
         game: props.game,
@@ -97,9 +98,7 @@ function handleLaunch(executable: GameExecutable) {
         },
     };
 
-    if (executable.is_running) {
-        emit('stop', payload);
-    } else if (!gameActions?.isGameExecutableInstalled(executable)) {
+    if (!gameActions?.isGameExecutableInstalled(executable)) {
         emit('install_and_play', payload);
     } else {
         emit('play', payload);

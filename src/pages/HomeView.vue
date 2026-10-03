@@ -8,6 +8,8 @@ import { GameActionsProvider, GameExecutable, type Game } from '@/types/types';
 import IconVerified from '@/components/IconVerified.vue';
 import GameExecutables from '@/components/GameExecutables.vue';
 import SteamLaunch from '@/components/SteamLaunch.vue';
+import { stopSteamGame } from '@/composables/steam-launch';
+import { executableFileName } from '@/utils/executable-path';
 import { useRunningState } from '@/composables/running-state';
 import { GameActionsKey } from '@/constants/constants';
 import { emit, listen } from '@tauri-apps/api/event';
@@ -254,6 +256,40 @@ async function stopPlaying({game, executable}: {game: Game, executable: GameExec
 }
 
 
+// Stop every running game: dummy processes first, then the Rich Presence connection.
+const isStoppingAll = ref(false);
+async function stopAll() {
+    if (isStoppingAll.value) {
+        return;
+    }
+    isStoppingAll.value = true;
+    try {
+        for (const game of [...playingGames.value]) {
+            for (const executable of game.executables.filter(exe => exe.is_running)) {
+                await stopPlaying({
+                    game,
+                    executable: { ...executable, filename: executableFileName(executable.name) },
+                });
+            }
+            // Launched from the Steam library: stop it and remove the fake install again.
+            if (game.steam_exe) {
+                try {
+                    await stopSteamGame(game);
+                    addLog('info', `Removed Steam library entry for ${game.name}`);
+                } catch (error) {
+                    addLog('error', `Failed to clean up Steam library entry for ${game.name}: ${error}`);
+                }
+            }
+        }
+        if (isConnectedToRPC.value || isConnecting.value) {
+            emit('event_disconnect');
+            resetRPCState();
+        }
+    } finally {
+        isStoppingAll.value = false;
+    }
+}
+
 // Clear every "connected via RPC" flag, e.g. when the connection fails or is dropped.
 function resetRPCState() {
     isConnectedToRPC.value = false;
@@ -456,6 +492,14 @@ provide<GameActionsProvider>(GameActionsKey, {
                         <li v-for="game in playingGames" :key="game.id" class="truncate" :title="game.name">{{ game.name }}</li>
                     </ul>
                     <p v-else class="mt-1 text-xs text-zinc-500 dark:text-zinc-400">Not playing any game</p>
+                    <button class="mt-3 w-full rounded-lg px-3 py-1.5 text-xs font-medium transition"
+                        :class="playingGames.length > 0
+                            ? 'bg-red-500/10 text-red-500 hover:bg-red-500/20'
+                            : 'bg-zinc-200/60 text-zinc-400 dark:bg-zinc-800/60 dark:text-zinc-500'"
+                        :disabled="playingGames.length === 0 || isStoppingAll"
+                        @click="stopAll()">
+                        {{ playingGames.length > 1 ? 'Stop all' : 'Stop' }}
+                    </button>
                 </div>
             </div>
         </aside>
@@ -530,7 +574,6 @@ provide<GameActionsProvider>(GameActionsKey, {
                 <div class="card">
                     <GameExecutables :game="selectedGame"
                         @play="playGame"
-                        @stop="stopPlaying"
                         @install_and_play="installAndPlay" />
                 </div>
                 <SteamLaunch :game="selectedGame" />

@@ -2,7 +2,7 @@
 import { computed, ref, watch } from 'vue';
 import { ask } from '@tauri-apps/plugin-dialog';
 import { useGlobalState } from '@/composables/app-state';
-import { fetchSteamInfo, getSteamId, guessExeName, launchSteamGame, stopSteamGame, type SteamInfo } from '@/composables/steam-launch';
+import { fetchSteamInfo, getSteamId, guessExeName, launchSteamGame, type SteamInfo } from '@/composables/steam-launch';
 import type { Game } from '@/types/types';
 
 const props = defineProps<{ game: Game }>();
@@ -17,7 +17,6 @@ const exeName = ref('');
 const exeGuessed = ref(false);
 const error = ref('');
 const launching = ref(false);
-const stopping = ref(false);
 
 const canLaunch = computed(() =>
     !!info.value?.steam_found && !!installDir.value.trim() && !!exeName.value.trim()
@@ -82,20 +81,6 @@ async function launch() {
         launching.value = false;
     }
 }
-
-// Stops the dummy process and removes the fake Steam install again.
-async function stop() {
-    stopping.value = true;
-    try {
-        await stopSteamGame(props.game);
-        addLog('info', `Removed Steam library entry for ${props.game.name}`);
-    } catch (e) {
-        error.value = String(e);
-        addLog('error', `Failed to clean up the Steam library entry: ${e}`);
-    } finally {
-        stopping.value = false;
-    }
-}
 </script>
 
 <template>
@@ -131,11 +116,9 @@ async function stop() {
             </p>
             <div v-else class="mb-3"></div>
 
-            <button v-if="game.steam_exe" class="btn-danger w-full" :disabled="stopping" @click="stop()">
-                {{ stopping ? 'Removing…' : 'Stop and remove from Steam library' }}
-            </button>
-            <button v-else class="btn-primary w-full" :disabled="!canLaunch" @click="launch()">
-                {{ launching ? 'Starting…' : 'Launch in Steam library' }}
+            <button class="w-full" :class="game.steam_exe ? 'btn-ghost' : 'btn-primary'"
+                :disabled="!canLaunch" @click="launch()">
+                {{ game.steam_exe ? 'Running from Steam library' : (launching ? 'Starting…' : 'Launch in Steam library') }}
             </button>
         </template>
 
