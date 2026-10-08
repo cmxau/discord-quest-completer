@@ -21,6 +21,8 @@ const exeGuessed = ref(false);
 const error = ref('');
 const notice = ref('');
 const launchedPath = ref('');
+const launchedManifestPath = ref('');
+const manifestFromSteam = ref(true);
 const launching = ref(false);
 
 // What will actually be created. Empty fields fall back to names generated from the game's title,
@@ -105,6 +107,8 @@ async function launch() {
         }
         const launched = await launchSteamGame(props.game, steamId.value, effectiveInstallDir.value, effectiveExeName.value);
         launchedPath.value = launched.exe_path;
+        launchedManifestPath.value = launched.manifest_path;
+        manifestFromSteam.value = launched.manifest_from_steam;
         addLog('info', `Launched ${props.game.name} from the Steam library: ${launched.exe_path}`);
     } catch (e) {
         error.value = String(e);
@@ -159,8 +163,13 @@ async function launch() {
                 {{ game.steam_exe ? 'Running from Steam library' : (launching ? 'Starting…' : 'Launch in Steam library') }}
             </button>
             <button class="btn-ghost mt-2 w-full" @click="openFolder()">Open folder</button>
-            <p v-if="game.steam_exe && launchedPath" class="mt-2 break-all font-mono text-[11px] text-emerald-600 dark:text-emerald-400">
-                Created: {{ launchedPath }}
+            <div v-if="game.steam_exe && launchedPath" class="mt-2 space-y-1 break-all font-mono text-[11px] text-emerald-600 dark:text-emerald-400">
+                <p>Exe: {{ launchedPath }}</p>
+                <p v-if="launchedManifestPath">Manifest: {{ launchedManifestPath }}</p>
+            </div>
+            <p v-if="game.steam_exe && launchedPath && !manifestFromSteam"
+                class="mt-2 rounded-lg bg-amber-500/10 px-3 py-2 text-[11px] text-amber-600 dark:text-amber-400">
+                Steam's build data couldn't be fetched, so the manifest is a minimal one. Stop and launch again once you're online for a complete one.
             </p>
         </template>
 

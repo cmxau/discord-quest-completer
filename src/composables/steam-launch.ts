@@ -14,6 +14,10 @@ export interface SteamInfo {
 export interface LaunchedSteamGame {
     file_name: string;
     exe_path: string;
+    /** True when the manifest was filled from Steam's build data, false when it is a minimal one. */
+    manifest_from_steam: boolean;
+    /** Where the Steam manifest was written. */
+    manifest_path: string;
 }
 
 const infoCache = new Map<string, SteamInfo>();

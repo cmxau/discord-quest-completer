@@ -38,6 +38,10 @@ pub struct LaunchedSteamGame {
     pub file_name: String,
     /// Where the dummy exe was created, shown so it is clear what was added.
     pub exe_path: String,
+    /// True when the manifest was filled from Steam's build and depot data, false when it is minimal.
+    pub manifest_from_steam: bool,
+    /// Where the Steam manifest was written (in `steamapps`, one level above the game folder).
+    pub manifest_path: String,
 }
 
 #[derive(Debug)]
@@ -158,21 +162,119 @@ fn save_registry(path: &Path, entries: &[SteamFake]) -> Result<(), String> {
 // Manifest
 // ---------------------------------------------------------------------------------------------
 
-fn manifest_text(steam_id: &str, name: &str, install_dir: &str) -> String {
+/// One depot of an app as Steam lists it for the public branch.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SteamDepot {
+    pub id: String,
+    pub manifest: String,
+    pub size: String,
+}
+
+/// What a real install of the app would record: the current public build and its depots.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct SteamBuild {
+    pub build_id: String,
+    pub depots: Vec<SteamDepot>,
+    /// Depots shared with another app (for example Steamworks redistributables), as (depot, app).
+    pub shared_depots: Vec<(String, String)>,
+}
+
+impl SteamBuild {
+    fn total_size(&self) -> u64 {
+        self.depots.iter().filter_map(|d| d.size.parse::<u64>().ok()).sum()
+    }
+}
+
+/// Pull the public build id and depot list out of a steamcmd.net `info` response.
+pub fn parse_steam_build(json: &serde_json::Value, steam_id: &str) -> Option<SteamBuild> {
+    let depots = &json["data"][steam_id]["depots"];
+    let build_id = depots["branches"]["public"]["buildid"].as_str().filter(|b| !b.is_empty())?.to_string();
+
+    let mut build = SteamBuild { build_id, ..Default::default() };
+    for (key, value) in depots.as_object()? {
+        if key.is_empty() || !key.chars().all(|c| c.is_ascii_digit()) {
+            continue; // "branches", "baselanguages", ...
+        }
+        if let Some(app) = value["depotfromapp"].as_str() {
+            build.shared_depots.push((key.clone(), app.to_string()));
+        } else if let Some(public) = value["manifests"]["public"].as_object() {
+            if let Some(gid) = public.get("gid").and_then(|g| g.as_str()) {
+                let size = public.get("size").and_then(|s| s.as_str()).unwrap_or("0");
+                build.depots.push(SteamDepot { id: key.clone(), manifest: gid.to_string(), size: size.to_string() });
+            }
+        }
+    }
+    let by_id = |id: &String| id.parse::<u64>().unwrap_or(u64::MAX);
+    build.depots.sort_by_key(|d| by_id(&d.id));
+    build.shared_depots.sort_by_key(|(d, _)| by_id(d));
+    if build.depots.is_empty() {
+        return None; // nothing to describe, so keep the minimal manifest
+    }
+    Some(build)
+}
+
+/// The text of `appmanifest_<id>.acf`. With Steam's build data it looks like a finished install
+/// (real build id, depots and size); without it, a minimal manifest that still names the install.
+fn manifest_text(
+    steam_id: &str,
+    name: &str,
+    install_dir: &str,
+    steam_root: Option<&Path>,
+    build: Option<&SteamBuild>,
+) -> String {
     let last_updated = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0);
 
-    // StateFlags 4 = fully installed. AutoUpdateBehavior 1 = "only update when I launch it", so Steam
-    // never starts downloading in the background for this fake install.
-    format!(
-        "\"AppState\"\n{{\n\t\"appid\"\t\t\"{id}\"\n\t\"Universe\"\t\t\"1\"\n\t\"name\"\t\t\"{name}\"\n\t\"StateFlags\"\t\t\"4\"\n\t\"installdir\"\t\t\"{dir}\"\n\t\"LastUpdated\"\t\t\"{ts}\"\n\t\"SizeOnDisk\"\t\t\"0\"\n\t\"buildid\"\t\t\"0\"\n\t\"AutoUpdateBehavior\"\t\t\"1\"\n\t\"AllowOtherDownloadsWhileRunning\"\t\t\"0\"\n}}\n",
-        id = steam_id,
-        name = acf_escape(name),
-        dir = acf_escape(install_dir),
-        ts = last_updated,
-    )
+    let kv = |key: &str, value: &str| format!("\t\"{}\"\t\t\"{}\"\n", key, acf_escape(value));
+    let mut out = String::from("\"AppState\"\n{\n");
+    out += &kv("appid", steam_id);
+    out += &kv("Universe", "1");
+    if let Some(root) = steam_root {
+        let launcher = root.join("steam.exe").to_string_lossy().replace('/', "\\");
+        out += &kv("LauncherPath", &launcher);
+    }
+    out += &kv("name", name);
+    // StateFlags 4 = fully installed.
+    out += &kv("StateFlags", "4");
+    out += &kv("installdir", install_dir);
+    out += &kv("LastUpdated", &last_updated.to_string());
+    out += &kv("LastPlayed", "0");
+    out += &kv("SizeOnDisk", &build.map(|b| b.total_size()).unwrap_or(0).to_string());
+    out += &kv("StagingSize", "0");
+    out += &kv("buildid", build.map(|b| b.build_id.as_str()).unwrap_or("0"));
+    out += &kv("LastOwner", "0");
+    out += &kv("DownloadType", "0");
+    out += &kv("UpdateResult", "0");
+    out += &kv("BytesToDownload", "0");
+    out += &kv("BytesDownloaded", "0");
+    out += &kv("BytesToStage", "0");
+    out += &kv("BytesStaged", "0");
+    if let Some(b) = build {
+        out += &kv("TargetBuildID", &b.build_id);
+    }
+    // 1 = "only update when I launch it", so Steam never starts downloading in the background.
+    out += &kv("AutoUpdateBehavior", "1");
+    out += &kv("AllowOtherDownloadsWhileRunning", "0");
+    out += &kv("ScheduledAutoUpdate", "0");
+
+    out += "\t\"InstalledDepots\"\n\t{\n";
+    for depot in build.map(|b| b.depots.as_slice()).unwrap_or(&[]) {
+        out += &format!("\t\t\"{}\"\n\t\t{{\n\t\t\t\"manifest\"\t\t\"{}\"\n\t\t\t\"size\"\t\t\"{}\"\n\t\t}}\n", depot.id, depot.manifest, depot.size);
+    }
+    out += "\t}\n";
+    if let Some(b) = build.filter(|b| !b.shared_depots.is_empty()) {
+        out += "\t\"SharedDepots\"\n\t{\n";
+        for (depot, app) in &b.shared_depots {
+            out += &format!("\t\t\"{}\"\t\t\"{}\"\n", depot, app);
+        }
+        out += "\t}\n";
+    }
+    out += "\t\"UserConfig\"\n\t{\n\t\t\"language\"\t\t\"english\"\n\t}\n";
+    out += "\t\"MountedConfig\"\n\t{\n\t\t\"language\"\t\t\"english\"\n\t}\n";
+    out += "}\n";
+    out
 }
 
 /// Is this manifest an *empty* fake install (no game files, nothing downloaded) rather than a real one?
@@ -217,6 +319,21 @@ pub fn prepare_fake(
     name: &str,
     install_dir: &str,
     exe: &str,
+) -> Result<PreparedGame, String> {
+    prepare_fake_with_build(steamapps, registry_path, runner, steam_id, name, install_dir, exe, None)
+}
+
+/// Like `prepare_fake`, and with Steam's build data the manifest records a real build id, depots
+/// and size instead of an empty install.
+pub fn prepare_fake_with_build(
+    steamapps: &Path,
+    registry_path: &Path,
+    runner: &Path,
+    steam_id: &str,
+    name: &str,
+    install_dir: &str,
+    exe: &str,
+    build: Option<&SteamBuild>,
 ) -> Result<PreparedGame, String> {
     validate_steam_id(steam_id)?;
     let install_dir = validate_component(install_dir)?;
@@ -308,8 +425,9 @@ pub fn prepare_fake(
             .map_err(|e| format!("Failed to create game folder: {}", e))?;
         fs::copy(runner, &exe_path).map_err(|e| format!("Failed to copy dummy executable: {}", e))?;
 
-        if adopted_acf {
-            // Replace the old-format leftover with a manifest that disables background updates.
+        // A manifest we created in an earlier launch (or an old-format leftover we adopted) is
+        // replaced, so every launch writes the current, most complete version.
+        if (adopted_acf || (existing.is_some() && acf_created)) && acf_path.exists() {
             fs::remove_file(&acf_path).map_err(|e| format!("Failed to replace old manifest: {}", e))?;
         }
         if !acf_path.exists() {
@@ -318,7 +436,7 @@ pub fn prepare_fake(
                 .create_new(true) // never overwrite a manifest that appeared in the meantime
                 .open(&acf_path)
                 .map_err(|e| format!("Failed to create Steam manifest: {}", e))?;
-            file.write_all(manifest_text(steam_id, name, &install_dir).as_bytes())
+            file.write_all(manifest_text(steam_id, name, &install_dir, steamapps.parent(), build).as_bytes())
                 .map_err(|e| format!("Failed to write Steam manifest: {}", e))?;
         }
         Ok(())
@@ -670,6 +788,88 @@ mod tests {
         let _ = fs::remove_dir_all(&e.root);
     }
 
+    // Real shape of Steam's data for AION 2 (3393110): one real depot, two shared Steamworks depots.
+    const AION2_BUILD_JSON: &str = r#"{"data":{"3393110":{"depots":{
+        "228989":{"config":{"oslist":"windows"},"depotfromapp":"228980","sharedinstall":"1"},
+        "228990":{"config":{"oslist":"windows"},"depotfromapp":"228980","sharedinstall":"1"},
+        "3393111":{"manifests":{"public":{"download":"86124054528","gid":"1699273097574069541","size":"87549550890"}}},
+        "baselanguages":"english","branches":{"public":{"buildid":"25767555","timeupdated":"1791355218"}},"privatebranches":"1"}}}}"#;
+
+    #[test]
+    fn parses_the_build_and_depots_of_an_app() {
+        let json: serde_json::Value = serde_json::from_str(AION2_BUILD_JSON).unwrap();
+        let build = parse_steam_build(&json, "3393110").expect("a build");
+        assert_eq!(build.build_id, "25767555");
+        assert_eq!(build.depots, vec![SteamDepot { id: "3393111".into(), manifest: "1699273097574069541".into(), size: "87549550890".into() }]);
+        assert_eq!(build.shared_depots, vec![("228989".to_string(), "228980".to_string()), ("228990".to_string(), "228980".to_string())]);
+        assert_eq!(build.total_size(), 87_549_550_890);
+        // unknown app, or no public build -> no build data (the minimal manifest is used instead)
+        assert!(parse_steam_build(&json, "999").is_none());
+        let none: serde_json::Value = serde_json::from_str(r#"{"data":{"1":{"depots":{"branches":{}}}}}"#).unwrap();
+        assert!(parse_steam_build(&none, "1").is_none());
+    }
+
+    #[test]
+    fn the_manifest_looks_like_a_finished_install_when_steam_data_is_known() {
+        let e = env("rich");
+        let json: serde_json::Value = serde_json::from_str(AION2_BUILD_JSON).unwrap();
+        let build = parse_steam_build(&json, "3393110").unwrap();
+        prepare_fake_with_build(&e.steamapps, &e.registry, &e.runner, "3393110", "AION 2", "AION2", "Aion2/Binaries/Win64/AION2.exe", Some(&build)).unwrap();
+        let text = fs::read_to_string(e.steamapps.join("appmanifest_3393110.acf")).unwrap();
+
+        for expected in [
+            "\"appid\"\t\t\"3393110\"",
+            "\"name\"\t\t\"AION 2\"",
+            "\"installdir\"\t\t\"AION2\"",
+            "\"StateFlags\"\t\t\"4\"",
+            "\"buildid\"\t\t\"25767555\"",
+            "\"TargetBuildID\"\t\t\"25767555\"",
+            "\"SizeOnDisk\"\t\t\"87549550890\"",
+            "\"AutoUpdateBehavior\"\t\t\"1\"",
+            "\"3393111\"\n\t\t{\n\t\t\t\"manifest\"\t\t\"1699273097574069541\"\n\t\t\t\"size\"\t\t\"87549550890\"",
+            "\"228989\"\t\t\"228980\"",
+            "\"LauncherPath\"",
+            "steam.exe",
+            "\"UserConfig\"",
+        ] {
+            assert!(text.contains(expected), "manifest is missing {:?}\n{}", expected, text);
+        }
+        // braces balance and every key has a value: Steam's parser is unforgiving
+        assert_eq!(text.matches('{').count(), text.matches('}').count());
+        assert!(text.trim_start().starts_with("\"AppState\""));
+        assert_eq!(cleanup_fake(&e.steamapps, &e.registry, "3393110"), Ok(true));
+        assert!(!e.steamapps.join("appmanifest_3393110.acf").exists());
+        let _ = fs::remove_dir_all(&e.root);
+    }
+
+    #[test]
+    fn without_steam_data_the_manifest_is_minimal_but_valid() {
+        let e = env("thin");
+        prepare(&e, "4080220", "EA SPORTS FC 27", "fc27.exe").unwrap();
+        let text = fs::read_to_string(e.steamapps.join("appmanifest_4080220.acf")).unwrap();
+        assert!(text.contains("\"buildid\"\t\t\"0\"") && text.contains("\"SizeOnDisk\"\t\t\"0\""));
+        assert!(!text.contains("TargetBuildID") && !text.contains("\"manifest\""));
+        assert_eq!(text.matches('{').count(), text.matches('}').count());
+        let _ = fs::remove_dir_all(&e.root);
+    }
+
+    #[test]
+    fn launching_again_replaces_a_manifest_we_made_earlier() {
+        let e = env("relaunch");
+        // first launch (for example from an older version) wrote a minimal manifest and was never cleaned up
+        prepare_fake(&e.steamapps, &e.registry, &e.runner, "3393110", "AION 2", "AION2", "Aion2/Binaries/Win64/AION2.exe").unwrap();
+        let acf = e.steamapps.join("appmanifest_3393110.acf");
+        assert!(fs::read_to_string(&acf).unwrap().contains("\"buildid\"\t\t\"0\""));
+
+        let json: serde_json::Value = serde_json::from_str(AION2_BUILD_JSON).unwrap();
+        let build = parse_steam_build(&json, "3393110").unwrap();
+        prepare_fake_with_build(&e.steamapps, &e.registry, &e.runner, "3393110", "AION 2", "AION2", "Aion2/Binaries/Win64/AION2.exe", Some(&build)).unwrap();
+        assert!(fs::read_to_string(&acf).unwrap().contains("\"buildid\"\t\t\"25767555\""), "the stale manifest must be replaced");
+
+        assert_eq!(cleanup_fake(&e.steamapps, &e.registry, "3393110"), Ok(true));
+        assert!(!acf.exists());
+        let _ = fs::remove_dir_all(&e.root);
+    }
     #[test]
     fn rejects_path_tricks() {
         let e = env("paths");

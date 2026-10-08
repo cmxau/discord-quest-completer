@@ -307,7 +307,19 @@ async fn launch_steam_game(
     let registry = steam_registry_path(&handle)?;
     let runner = resolve_runner_template(&handle)?;
 
-    let prepared = steam::prepare_fake(&steamapps, &registry, &runner, &steam_id, &name, &install_dir, &exe_name)?;
+    // Fill the manifest from Steam's own build and depot data so it looks like a finished install.
+    // If that data can't be fetched, fall back to a minimal manifest instead of failing the launch.
+    let build = match fetch_steam_app_json(&steam_id).await {
+        Ok(json) => steam::parse_steam_build(&json, &steam_id),
+        Err(e) => {
+            eprintln!("Steam build lookup failed for {}: {}", steam_id, e);
+            None
+        }
+    };
+
+    let prepared = steam::prepare_fake_with_build(
+        &steamapps, &registry, &runner, &steam_id, &name, &install_dir, &exe_name, build.as_ref(),
+    )?;
 
     // Both files must really be there: Discord needs the manifest as well as the exe. Fail loudly
     // (and undo) instead of starting a game that can never be detected.
@@ -340,6 +352,8 @@ async fn launch_steam_game(
     Ok(steam::LaunchedSteamGame {
         file_name,
         exe_path: prepared.exe_path.to_string_lossy().to_string(),
+        manifest_from_steam: build.is_some(),
+        manifest_path: prepared.acf_path.to_string_lossy().to_string(),
     })
 }
 
