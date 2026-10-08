@@ -243,9 +243,25 @@ fn steam_registry_path(handle: &AppHandle) -> Result<PathBuf, String> {
         .map_err(|e| format!("Failed to resolve app data folder: {}", e))?;
     Ok(dir.join("steam_fakes.json"))
 }
+/// Fetch Steam's app info (from the community steamcmd.net mirror) for an app id.
+async fn fetch_steam_app_json(steam_id: &str) -> Result<serde_json::Value, String> {
+    let url = format!("https://api.steamcmd.net/v1/info/{}", steam_id);
+    let client = tauri_plugin_http::reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(15))
+        .build()
+        .map_err(|e| e.to_string())?;
+    let res = client.get(&url).send().await.map_err(|e| e.to_string())?;
+    let text = res
+        .error_for_status()
+        .map_err(|e| e.to_string())?
+        .text()
+        .await
+        .map_err(|e| e.to_string())?;
+    serde_json::from_str(&text).map_err(|e| e.to_string())
+}
 
-/// Install folder and launch exe for a Steam app (from the community steamcmd.net mirror), plus
-/// whether Steam is installed here. Network problems are not an error: the fields are just empty.
+/// Install folder and launch exe for a Steam app, plus whether Steam is installed here. Network
+/// problems are not an error: the fields are just empty and `lookup_failed` is set.
 #[tauri::command(rename_all = "snake_case")]
 async fn steam_game_info(steam_id: String) -> Result<steam::SteamGameInfo, String> {
     if steam_id.is_empty() || !steam_id.chars().all(|c| c.is_ascii_digit()) {
@@ -256,28 +272,29 @@ async fn steam_game_info(steam_id: String) -> Result<steam::SteamGameInfo, Strin
         ..Default::default()
     };
 
-    let url = format!("https://api.steamcmd.net/v1/info/{}", steam_id);
-    let client = tauri_plugin_http::reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(15))
-        .build()
-        .map_err(|e| e.to_string())?;
-    let body = match client.get(&url).send().await {
-        Ok(res) => res.text().await.map_err(|e| e.to_string()),
-        Err(e) => Err(e.to_string()),
-    };
-    match body.and_then(|text| serde_json::from_str::<serde_json::Value>(&text).map_err(|e| e.to_string())) {
-        Ok(json) => {
-            let (installdir, exe) = steam::parse_steamcmd_info(&json, &steam_id);
-            info.installdir = installdir;
-            info.exe = exe;
+    // This is a free community service that can rate-limit or hiccup, so try twice before giving up.
+    for attempt in 1..=2 {
+        match fetch_steam_app_json(&steam_id).await.map(|json| steam::parse_steamcmd_info(&json, &steam_id)) {
+            // Every real app has an install folder; none means the response had no data for it.
+            Ok((Some(installdir), exe)) => {
+                info.installdir = Some(installdir);
+                info.exe = exe;
+                return Ok(info);
+            }
+            Ok((None, _)) => eprintln!("Steam info for {} had no install folder (attempt {})", steam_id, attempt),
+            Err(e) => eprintln!("Steam info lookup failed for {} (attempt {}): {}", steam_id, attempt, e),
         }
-        Err(e) => eprintln!("Steam info lookup failed for {}: {}", steam_id, e),
+        if attempt == 1 {
+            let _ = tauri::async_runtime::spawn_blocking(|| std::thread::sleep(std::time::Duration::from_millis(700))).await;
+        }
     }
+
+    info.lookup_failed = true;
     Ok(info)
 }
 
 /// Create a fake Steam install for `steam_id` (manifest + dummy exe) and start the exe.
-/// Returns the exe file name, which is what `stop_steam_game` needs.
+/// Returns the exe file name (what `stop_steam_game` needs) and where the exe was created.
 #[tauri::command(rename_all = "snake_case")]
 async fn launch_steam_game(
     handle: AppHandle,
@@ -285,12 +302,22 @@ async fn launch_steam_game(
     name: String,
     install_dir: String,
     exe_name: String,
-) -> Result<String, String> {
+) -> Result<steam::LaunchedSteamGame, String> {
     let steamapps = steam::find_steamapps_dir().ok_or_else(|| "Steam installation not found".to_string())?;
     let registry = steam_registry_path(&handle)?;
     let runner = resolve_runner_template(&handle)?;
 
     let prepared = steam::prepare_fake(&steamapps, &registry, &runner, &steam_id, &name, &install_dir, &exe_name)?;
+
+    // Both files must really be there: Discord needs the manifest as well as the exe. Fail loudly
+    // (and undo) instead of starting a game that can never be detected.
+    if !prepared.acf_path.is_file() || !prepared.exe_path.is_file() {
+        let _ = steam::cleanup_fake(&steamapps, &registry, &steam_id);
+        return Err(format!(
+            "The Steam manifest or the exe was not created (manifest: {:?}, exe: {:?})",
+            prepared.acf_path, prepared.exe_path
+        ));
+    }
 
     let file_name = prepared
         .exe_path
@@ -310,7 +337,10 @@ async fn launch_steam_game(
         }
     }
 
-    Ok(file_name)
+    Ok(steam::LaunchedSteamGame {
+        file_name,
+        exe_path: prepared.exe_path.to_string_lossy().to_string(),
+    })
 }
 
 /// Stop the fake game's process and remove the manifest, folder and exe we created for it.

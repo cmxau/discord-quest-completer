@@ -27,12 +27,24 @@ pub struct SteamGameInfo {
     pub steam_found: bool,
     pub installdir: Option<String>,
     pub exe: Option<String>,
+    /// True when Steam's data could not be fetched, so the fields above are empty for that reason.
+    pub lookup_failed: bool,
+}
+
+/// What `launch_steam_game` reports back to the UI.
+#[derive(Serialize, Debug)]
+pub struct LaunchedSteamGame {
+    /// The exe's file name, which `stop_steam_game` needs.
+    pub file_name: String,
+    /// Where the dummy exe was created, shown so it is clear what was added.
+    pub exe_path: String,
 }
 
 #[derive(Debug)]
 pub struct PreparedGame {
     pub exe_path: PathBuf,
     pub game_dir: PathBuf,
+    pub acf_path: PathBuf,
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -82,7 +94,7 @@ fn validate_component(name: &str) -> Result<String, String> {
     let bad = name.is_empty()
         || name == "."
         || name == ".."
-        || name.len() > 100
+        || name.chars().count() > 100 // characters, not bytes: a 100-character CJK title is 300 bytes
         || name.ends_with('.')
         || name
             .chars()
@@ -317,8 +329,9 @@ pub fn prepare_fake(
         return Err(e);
     }
 
-    Ok(PreparedGame { exe_path, game_dir })
+    Ok(PreparedGame { exe_path, game_dir, acf_path })
 }
+
 
 /// Remove everything `prepare_fake` created for `steam_id`. Returns `Ok(false)` if nothing was
 /// registered, and an error (keeping the registry entry) if the exe is still in use.
@@ -415,7 +428,8 @@ pub fn parse_steamcmd_info(json: &serde_json::Value, steam_id: &str) -> (Option<
                 return None;
             }
         }
-        Some(exe.replace('\\', "/"))
+        // Steam writes launch paths with a leading slash ("/Aion2/Binaries/Win64/AION2.exe").
+        Some(exe.replace('\\', "/").trim_start_matches('/').to_string())
     });
 
     (installdir, exe)
@@ -557,6 +571,44 @@ mod tests {
         assert_eq!(fs::read_to_string(&acf).unwrap(), sized, "manifest must be left untouched");
         let _ = fs::remove_dir_all(&e.root);
     }
+
+    /// AION 2: Steam's launch path is absolute-looking and nested ("/Aion2/Binaries/Win64/AION2.exe"),
+    /// and the install folder differs in case from the folder name inside the path.
+    #[test]
+    fn handles_a_nested_launch_path_with_a_leading_slash() {
+        let json: serde_json::Value = serde_json::from_str(r#"{"data":{"3393110":{"config":{"installdir":"AION2","launch":{
+            "0":{"arguments":"-steam","config":{"oslist":"windows"},"executable":"/Aion2/Binaries/Win64/AION2.exe"},
+            "1":{"config":{"betakey":"aion2_dev_win_globaldist_gfn","oslist":"windows"},"executable":"/Aion2/Binaries/Win64/AION2.exe"}}}}}}"#).unwrap();
+        let (dir, exe) = parse_steamcmd_info(&json, "3393110");
+        assert_eq!(dir.as_deref(), Some("AION2"));
+        let exe = exe.expect("a launch exe is found");
+        assert_eq!(exe, "Aion2/Binaries/Win64/AION2.exe", "Steam's leading slash is dropped");
+
+        let e = env("aion2");
+        let p = prepare_fake(&e.steamapps, &e.registry, &e.runner, "3393110", "AION 2", &dir.unwrap(), &exe)
+            .unwrap_or_else(|err| panic!("prepare failed for exe {:?}: {}", exe, err));
+        assert!(p.exe_path.is_file(), "dummy exe must exist at {:?}", p.exe_path);
+        assert!(p.exe_path.ends_with("AION2/Aion2/Binaries/Win64/AION2.exe"));
+        assert_eq!(cleanup_fake(&e.steamapps, &e.registry, "3393110"), Ok(true));
+        assert!(!e.steamapps.join("common").join("AION2").exists());
+        let _ = fs::remove_dir_all(&e.root);
+    }
+
+    /// Regression: titles that broke the card's generated names in a check over every Steam-linked game.
+    #[test]
+    fn accepts_long_titles_in_any_script() {
+        let e = env("long");
+        // 100 characters of Japanese is 300 bytes: the limit is on characters, not bytes
+        let folder: String = "あ".repeat(100);
+        assert!(folder.len() > 100 && folder.chars().count() == 100);
+        let p = prepare_fake(&e.steamapps, &e.registry, &e.runner, "70300", "VVVVVV", &folder, "Game.exe").unwrap();
+        assert!(p.exe_path.is_file());
+        assert_eq!(cleanup_fake(&e.steamapps, &e.registry, "70300"), Ok(true));
+        // 101 characters is still rejected
+        assert!(prepare_fake(&e.steamapps, &e.registry, &e.runner, "70300", "VVVVVV", &"あ".repeat(101), "Game.exe").is_err());
+        let _ = fs::remove_dir_all(&e.root);
+    }
+
     #[test]
     fn rejects_path_tricks() {
         let e = env("paths");

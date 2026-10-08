@@ -2,7 +2,9 @@
 import { computed, ref, watch } from 'vue';
 import { ask } from '@tauri-apps/plugin-dialog';
 import { useGlobalState } from '@/composables/app-state';
-import { fetchSteamInfo, getSteamId, guessExeName, launchSteamGame, type SteamInfo } from '@/composables/steam-launch';
+import {
+    defaultInstallFolder, fetchSteamInfo, getSteamId, guessExeName, launchSteamGame, type SteamInfo,
+} from '@/composables/steam-launch';
 import type { Game } from '@/types/types';
 
 const props = defineProps<{ game: Game }>();
@@ -16,26 +18,37 @@ const installDir = ref('');
 const exeName = ref('');
 const exeGuessed = ref(false);
 const error = ref('');
+const notice = ref('');
+const launchedPath = ref('');
 const launching = ref(false);
 
-const canLaunch = computed(() =>
-    !!info.value?.steam_found && !!installDir.value.trim() && !!exeName.value.trim()
-    && !props.game.steam_exe && !launching.value
-);
+// What will actually be created. Empty fields fall back to names generated from the game's title,
+// so Launch always has a folder and an exe to create.
+const effectiveInstallDir = computed(() => installDir.value.trim() || defaultInstallFolder(props.game.name));
+const effectiveExeName = computed(() => exeName.value.trim() || guessExeName(null, null, props.game.name).exe);
 
-watch(() => props.game.uid, async () => {
+// Steam is the only hard requirement: without it there is no library to add to.
+const canLaunch = computed(() => !!info.value?.steam_found && !props.game.steam_exe && !launching.value);
+
+async function loadInfo() {
+    const id = steamId.value;
     info.value = null;
     error.value = '';
+    notice.value = '';
     installDir.value = '';
     exeName.value = '';
-    if (!steamId.value) {
+    if (!id) {
         return;
     }
     loading.value = true;
     try {
-        info.value = await fetchSteamInfo(steamId.value);
-        installDir.value = info.value.installdir ?? props.game.name;
-        const guess = guessExeName(info.value.installdir, info.value.exe);
+        const result = await fetchSteamInfo(id);
+        if (id !== steamId.value) {
+            return; // the user selected another game while this was loading
+        }
+        info.value = result;
+        installDir.value = result.installdir ?? defaultInstallFolder(props.game.name);
+        const guess = guessExeName(result.installdir, result.exe, props.game.name);
         exeName.value = guess.exe;
         exeGuessed.value = guess.guessed;
     } catch (e) {
@@ -43,7 +56,9 @@ watch(() => props.game.uid, async () => {
     } finally {
         loading.value = false;
     }
-}, { immediate: true });
+}
+
+watch(() => props.game.uid, loadInfo, { immediate: true });
 
 // Ask once per session before touching the Steam library.
 let acknowledged = false;
@@ -67,13 +82,16 @@ async function launch() {
         return;
     }
     error.value = '';
+    notice.value = '';
     launching.value = true;
     try {
         if (!(await confirmSteamChange())) {
+            notice.value = 'Cancelled. Nothing was added to your Steam library.';
             return;
         }
-        await launchSteamGame(props.game, steamId.value, installDir.value.trim(), exeName.value.trim());
-        addLog('info', `Launched ${props.game.name} from the Steam library (${exeName.value.trim()})`);
+        const launched = await launchSteamGame(props.game, steamId.value, effectiveInstallDir.value, effectiveExeName.value);
+        launchedPath.value = launched.exe_path;
+        addLog('info', `Launched ${props.game.name} from the Steam library: ${launched.exe_path}`);
     } catch (e) {
         error.value = String(e);
         addLog('error', `Steam launch failed: ${e}`);
@@ -101,18 +119,24 @@ async function launch() {
         </p>
 
         <template v-else-if="info">
+            <div v-if="info.lookup_failed"
+                class="mb-3 flex items-start justify-between gap-3 rounded-lg bg-amber-500/10 px-3 py-2 text-xs text-amber-600 dark:text-amber-400">
+                <span>Couldn't fetch this game's install details from Steam's data service (network issue or rate limit). Launch will use names generated from the game's title, or you can Retry.</span>
+                <button class="btn-ghost shrink-0 !px-2.5 !py-1 text-xs" @click="loadInfo()">Retry</button>
+            </div>
+
             <label class="mb-1 block text-xs font-medium text-zinc-600 dark:text-zinc-300">Install folder</label>
-            <input v-model="installDir" type="text" spellcheck="false"
+            <input v-model="installDir" type="text" spellcheck="false" :placeholder="effectiveInstallDir"
                 class="mb-3 h-9 w-full rounded-lg border border-zinc-200 bg-zinc-50 px-3 font-mono text-xs text-zinc-900 outline-none transition focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/15 dark:border-zinc-800 dark:bg-zinc-950 dark:text-white" />
 
             <label class="mb-1 flex items-center gap-2 text-xs font-medium text-zinc-600 dark:text-zinc-300">
                 Executable
-                <span v-if="exeGuessed" class="chip !bg-amber-500/15 !text-amber-600 dark:!text-amber-400">unverified guess</span>
+                <span v-if="exeGuessed && !info.lookup_failed" class="chip !bg-amber-500/15 !text-amber-600 dark:!text-amber-400">unverified guess</span>
             </label>
-            <input v-model="exeName" type="text" spellcheck="false" placeholder="game.exe"
+            <input v-model="exeName" type="text" spellcheck="false" :placeholder="effectiveExeName"
                 class="mb-1 h-9 w-full rounded-lg border border-zinc-200 bg-zinc-50 px-3 font-mono text-xs text-zinc-900 outline-none transition focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/15 dark:border-zinc-800 dark:bg-zinc-950 dark:text-white" />
-            <p v-if="exeGuessed" class="mb-3 text-[11px] text-zinc-500 dark:text-zinc-400">
-                Steam launches this game through a launcher, so the real exe name isn't known. Edit it if the quest isn't detected.
+            <p v-if="exeGuessed && !info.lookup_failed" class="mb-3 text-[11px] text-zinc-500 dark:text-zinc-400">
+                Steam doesn't give a real exe name for this game, so one was generated from its title. Edit it if the quest isn't detected.
             </p>
             <div v-else class="mb-3"></div>
 
@@ -120,8 +144,12 @@ async function launch() {
                 :disabled="!canLaunch" @click="launch()">
                 {{ game.steam_exe ? 'Running from Steam library' : (launching ? 'Starting…' : 'Launch in Steam library') }}
             </button>
+            <p v-if="game.steam_exe && launchedPath" class="mt-2 break-all font-mono text-[11px] text-emerald-600 dark:text-emerald-400">
+                Created: {{ launchedPath }}
+            </p>
         </template>
 
+        <p v-if="notice" class="mt-3 rounded-lg bg-zinc-100 px-3 py-2 text-xs text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">{{ notice }}</p>
         <p v-if="error" class="mt-3 break-words rounded-lg bg-red-500/10 px-3 py-2 text-xs text-red-500">{{ error }}</p>
     </div>
 </template>
