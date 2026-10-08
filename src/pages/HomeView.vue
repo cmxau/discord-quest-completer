@@ -8,7 +8,7 @@ import { GameActionsProvider, GameExecutable, type Game } from '@/types/types';
 import IconVerified from '@/components/IconVerified.vue';
 import GameExecutables from '@/components/GameExecutables.vue';
 import SteamLaunch from '@/components/SteamLaunch.vue';
-import { stopSteamGame } from '@/composables/steam-launch';
+import { getSteamId, stopSteamGame } from '@/composables/steam-launch';
 import { executableFileName } from '@/utils/executable-path';
 import { useRunningState } from '@/composables/running-state';
 import { cloneGame, loadSavedGames, refreshSavedGames, saveGames, serializeGames } from '@/composables/saved-games';
@@ -37,7 +37,7 @@ const {
     isReadyDiscord,
     allFetchDone,
 } = useFetchGameList()
-const { addLog, refreshRequest, isGameListLoading } = useGlobalState();
+const { addLog, refreshRequest, isGameListLoading, selectedGameLabel } = useGlobalState();
 watch(refreshRequest, () => fetchGameList());
 watch(
     () => isLoadingGH.value || isLoadingDiscord.value || isLoadingBundled.value,
@@ -121,6 +121,12 @@ const selectedGame = computed(() => {
     const found = gameList.value.find(g => g.uid === selectedGameId.value);
     return found || null;
 });
+
+// The header's Feedback menu includes the selected game in a bug report.
+watch(selectedGame, (game) => {
+    const steamId = getSteamId(game);
+    selectedGameLabel.value = game ? `${game.name}${steamId ? ` (Steam ${steamId})` : ''}` : '';
+}, { immediate: true });
 
 function closeSearchResults() {
     searchResultsIsOpen.value = false;

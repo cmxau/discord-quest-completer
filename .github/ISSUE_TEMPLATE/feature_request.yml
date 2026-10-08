@@ -1,0 +1,73 @@
+name: Feature request
+description: Suggest an idea or an improvement
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the suggestion. If you opened this from the app's **Feedback** menu, the app details
+        below are already filled in.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would this solve?
+      description: What are you trying to do that is hard or impossible today?
+      placeholder: "When I … I can't …"
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: What would you like to see?
+      description: Describe the behaviour you have in mind.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you considered
+      description: Other ways you tried, or other tools that do this.
+    validations:
+      required: false
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Which part of the app is it about?
+      options:
+        - Game list and search
+        - Steam library launch
+        - Executable launch and the stand-in window
+        - Quests and Discord detection
+        - Look and feel
+        - Something else
+    validations:
+      required: false
+
+  - type: input
+    id: version
+    attributes:
+      label: App version
+      placeholder: "26.10.0"
+    validations:
+      required: false
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else?
+      description: Links, mock-ups, or notes about how Discord detects the game.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: searched
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched the existing issues and didn't find this request.
+          required: true

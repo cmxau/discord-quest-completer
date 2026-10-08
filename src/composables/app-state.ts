@@ -24,6 +24,8 @@ export interface UseGlobalStateReturn {
     };
     clearLogs: () => void,
     refreshRequest: ShallowRef<number>,
+    /** Describes the selected game for bug reports, e.g. "AION 2 (Steam 3393110)"; empty when none. */
+    selectedGameLabel: ShallowRef<string>,
     isGameListLoading: ShallowRef<boolean>,
     requestGameListRefresh: () => void,
 }
@@ -36,6 +38,7 @@ export const useGlobalState = createGlobalState(
 
     // game list refresh: header button bumps the counter, HomeView watches it
     const refreshRequest = shallowRef(0)
+    const selectedGameLabel = shallowRef('')
     const isGameListLoading = shallowRef(false)
     function requestGameListRefresh() {
       refreshRequest.value++
@@ -79,6 +82,7 @@ export const useGlobalState = createGlobalState(
         addLog,
         clearLogs,
         refreshRequest,
+        selectedGameLabel,
         isGameListLoading,
         requestGameListRefresh
     } as UseGlobalStateReturn

@@ -25,6 +25,7 @@
 - **Run several games at once.** The status card shows everything that is running (green) or idle (orange), with one Stop button. It stays in sync if you close a dummy window yourself.
 - **Always up to date.** The game list is loaded from Discord first, then a daily GitHub Pages mirror, then a copy bundled with the app.
 - **Light and dark themes**, and a Diagnostics page with a Rich Presence test and the app log.
+- **Report a bug or request a feature from the app.** The speech-bubble icon in the header opens a pre-filled issue on GitHub in your browser.
 
 ## Installation
 
@@ -96,7 +97,18 @@ Games can be added locally by editing `src/assets/custom-games.json`, which is m
 
 ## Contributing
 
-Issues and pull requests are welcome. Please run `pnpm build` and the Rust tests before opening a pull request.
+### Bugs and feature requests
+
+The easiest way is the **Feedback** menu (speech-bubble icon in the app's header):
+
+- **Report a bug** opens the bug form with your app version, Windows version, the selected game and the recent app log already filled in.
+- **Request a feature** opens the feature form with the app version filled in.
+
+Nothing is sent until you review the page on GitHub and press **Submit**. Personal folder names (your Windows user name) are removed from the log before the link is made. You can also open [a new issue](https://github.com/cmxau/discord-quest-completer/issues/new/choose) yourself and pick the same forms. They live in `.github/ISSUE_TEMPLATE/`.
+
+### Pull requests
+
+Pull requests are welcome. Please run `pnpm build` and the Rust tests before opening one.
 
 ## Credits
 

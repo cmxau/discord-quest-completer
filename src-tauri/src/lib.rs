@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use tauri::{path::BaseDirectory, AppHandle, Emitter, Listener, Manager};
 
+mod feedback;
 mod processes;
 mod rpc;
 mod runner;
@@ -430,7 +431,10 @@ pub fn run() {
             steam_game_info,
             launch_steam_game,
             stop_steam_game,
-            open_steam_folder
+            open_steam_folder,
+            feedback::open_issue_page,
+            feedback::windows_version,
+            feedback::current_user_name
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

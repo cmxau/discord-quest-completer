@@ -1,0 +1,96 @@
+name: Bug report
+description: Something isn't working as expected
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug. If you opened this from the app's **Feedback** menu, the app and
+        system details below are already filled in. Please check them and add what you can.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: A clear description of the problem, and what you expected instead.
+      placeholder: "I pressed Launch in Steam library for … and …"
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Add the game '…'
+        2. Click '…'
+        3. See the error
+    validations:
+      required: false
+
+  - type: input
+    id: game
+    attributes:
+      label: Game
+      description: The game's name, and its Steam app ID if it has one.
+      placeholder: "AION 2 (Steam 3393110)"
+    validations:
+      required: false
+
+  - type: dropdown
+    id: launch-method
+    attributes:
+      label: How did you launch it?
+      options:
+        - Executable list (Play)
+        - Steam library card (Launch in Steam library)
+        - Rich Presence (Test RPC)
+        - Not launching, something else
+    validations:
+      required: false
+
+  - type: dropdown
+    id: quest
+    attributes:
+      label: Did Discord count the game / quest?
+      options:
+        - Not applicable
+        - "Yes"
+        - "No"
+        - I'm not sure
+    validations:
+      required: false
+
+  - type: input
+    id: version
+    attributes:
+      label: App version
+      placeholder: "26.10.0"
+    validations:
+      required: false
+
+  - type: input
+    id: windows
+    attributes:
+      label: Windows version
+      placeholder: "Windows 11 (10.0.26300)"
+    validations:
+      required: false
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Recent app log
+      description: The latest lines from the app's Diagnostics page. Personal folder names are removed by the app, but please check before submitting.
+      render: shell
+    validations:
+      required: false
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else?
+      description: Screenshots, whether Steam or Discord was open, how you started the app, and so on.
+    validations:
+      required: false
