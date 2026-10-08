@@ -333,6 +333,42 @@ pub fn prepare_fake(
 }
 
 
+/// What the "Open folder" button should show in Explorer.
+#[derive(Debug, PartialEq)]
+pub enum OpenTarget {
+    /// Open the folder containing this file and highlight it.
+    Select(PathBuf),
+    /// Open this folder.
+    Folder(PathBuf),
+}
+
+/// Decide what to open for a game. Never leaves the Steam library: a file outside
+/// `steamapps/common` is ignored, and the install folder name is validated like any other.
+pub fn resolve_open_target(
+    steamapps: &Path,
+    install_dir: &str,
+    exe_path: Option<&str>,
+) -> Result<OpenTarget, String> {
+    let common = steamapps.join("common");
+
+    // While a fake install is running, show the exe itself.
+    if let Some(exe) = exe_path.map(str::trim).filter(|p| !p.is_empty()) {
+        let exe = PathBuf::from(exe);
+        if is_within(&exe, &common) && exe.is_file() {
+            return Ok(OpenTarget::Select(exe));
+        }
+    }
+
+    let game_dir = common.join(validate_component(install_dir)?);
+    if game_dir.is_dir() {
+        Ok(OpenTarget::Folder(game_dir))
+    } else if common.is_dir() {
+        // Nothing has been created yet: show the library folder the game would go into.
+        Ok(OpenTarget::Folder(common))
+    } else {
+        Err("The Steam library folder was not found".to_string())
+    }
+}
 /// Remove everything `prepare_fake` created for `steam_id`. Returns `Ok(false)` if nothing was
 /// registered, and an error (keeping the registry entry) if the exe is still in use.
 pub fn cleanup_fake(steamapps: &Path, registry_path: &Path, steam_id: &str) -> Result<bool, String> {
@@ -591,6 +627,31 @@ mod tests {
         assert!(p.exe_path.ends_with("AION2/Aion2/Binaries/Win64/AION2.exe"));
         assert_eq!(cleanup_fake(&e.steamapps, &e.registry, "3393110"), Ok(true));
         assert!(!e.steamapps.join("common").join("AION2").exists());
+        let _ = fs::remove_dir_all(&e.root);
+    }
+
+    #[test]
+    fn open_target_stays_inside_the_steam_library() {
+        let e = env("open");
+        let common = e.steamapps.join("common");
+
+        // nothing created yet -> the library folder
+        assert_eq!(resolve_open_target(&e.steamapps, "AION2", None), Ok(OpenTarget::Folder(common.clone())));
+
+        // a created fake install -> its folder, and its exe when one is given
+        let p = prepare_fake(&e.steamapps, &e.registry, &e.runner, "3393110", "AION 2", "AION2", "Aion2/Binaries/Win64/AION2.exe").unwrap();
+        assert_eq!(resolve_open_target(&e.steamapps, "AION2", None), Ok(OpenTarget::Folder(common.join("AION2"))));
+        let exe = p.exe_path.to_string_lossy().to_string();
+        assert_eq!(resolve_open_target(&e.steamapps, "AION2", Some(&exe)), Ok(OpenTarget::Select(p.exe_path.clone())));
+
+        // a file outside the library is ignored, not opened
+        let outside = e.root.join("runner.exe").to_string_lossy().to_string();
+        assert_eq!(resolve_open_target(&e.steamapps, "AION2", Some(&outside)), Ok(OpenTarget::Folder(common.join("AION2"))));
+
+        // folder names cannot escape the library
+        for bad in ["..", "../x", "a/b", "C:"] {
+            assert!(resolve_open_target(&e.steamapps, bad, None).is_err(), "install dir {:?}", bad);
+        }
         let _ = fs::remove_dir_all(&e.root);
     }
 

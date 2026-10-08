@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
+import { invoke } from '@tauri-apps/api/core';
 import { ask } from '@tauri-apps/plugin-dialog';
 import { useGlobalState } from '@/composables/app-state';
 import {
@@ -77,6 +78,19 @@ async function confirmSteamChange(): Promise<boolean> {
     return ok;
 }
 
+// Shows the dummy exe in Explorer while it runs, otherwise the game's install folder.
+async function openFolder() {
+    error.value = '';
+    try {
+        await invoke('open_steam_folder', {
+            install_dir: effectiveInstallDir.value,
+            exe_path: props.game.steam_exe && launchedPath.value ? launchedPath.value : null,
+        });
+    } catch (e) {
+        error.value = String(e);
+    }
+}
+
 async function launch() {
     if (!steamId.value || !canLaunch.value) {
         return;
@@ -144,6 +158,7 @@ async function launch() {
                 :disabled="!canLaunch" @click="launch()">
                 {{ game.steam_exe ? 'Running from Steam library' : (launching ? 'Starting…' : 'Launch in Steam library') }}
             </button>
+            <button class="btn-ghost mt-2 w-full" @click="openFolder()">Open folder</button>
             <p v-if="game.steam_exe && launchedPath" class="mt-2 break-all font-mono text-[11px] text-emerald-600 dark:text-emerald-400">
                 Created: {{ launchedPath }}
             </p>

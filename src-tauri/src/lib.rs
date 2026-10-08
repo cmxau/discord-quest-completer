@@ -343,6 +343,26 @@ async fn launch_steam_game(
     })
 }
 
+/// Open the game's folder in Explorer: the running dummy exe highlighted, else the install folder,
+/// else the Steam library folder it would be created in. Never opens anything outside the library.
+#[tauri::command(rename_all = "snake_case")]
+async fn open_steam_folder(install_dir: String, exe_path: Option<String>) -> Result<(), String> {
+    use std::os::windows::process::CommandExt;
+
+    let steamapps = steam::find_steamapps_dir().ok_or_else(|| "Steam installation not found".to_string())?;
+    let target = steam::resolve_open_target(&steamapps, &install_dir, exe_path.as_deref())?;
+
+    // Explorer wants backslashes; the Steam path from the registry mixes both.
+    let as_windows = |p: &Path| p.to_string_lossy().replace('/', "\\");
+    let mut cmd = std::process::Command::new("explorer.exe");
+    match target {
+        steam::OpenTarget::Select(file) => cmd.raw_arg(format!("/select,\"{}\"", as_windows(&file))),
+        steam::OpenTarget::Folder(dir) => cmd.raw_arg(format!("\"{}\"", as_windows(&dir))),
+    };
+    // Explorer exits with a non-zero code even on success, so only starting it can fail.
+    cmd.spawn().map(|_| ()).map_err(|e| format!("Failed to open Explorer: {}", e))
+}
+
 /// Stop the fake game's process and remove the manifest, folder and exe we created for it.
 #[tauri::command(rename_all = "snake_case")]
 async fn stop_steam_game(handle: AppHandle, steam_id: String, exe_filename: String) -> Result<(), String> {
@@ -395,7 +415,8 @@ pub fn run() {
             fetch_gamelist_from_discord,
             steam_game_info,
             launch_steam_game,
-            stop_steam_game
+            stop_steam_game,
+            open_steam_folder
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
