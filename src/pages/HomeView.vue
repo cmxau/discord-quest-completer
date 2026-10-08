@@ -11,6 +11,7 @@ import SteamLaunch from '@/components/SteamLaunch.vue';
 import { stopSteamGame } from '@/composables/steam-launch';
 import { executableFileName } from '@/utils/executable-path';
 import { useRunningState } from '@/composables/running-state';
+import { cloneGame, loadSavedGames, refreshSavedGames, saveGames, serializeGames } from '@/composables/saved-games';
 import { GameActionsKey } from '@/constants/constants';
 import { emit, listen } from '@tauri-apps/api/event';
 import { useFetchGameList } from '@/composables/fetch-gamelist';
@@ -100,9 +101,19 @@ const fuseOptions = computed<UseFuseOptions<Game>>(() => ({
 const { results: searchResults } = useFuse(debouncedSearchQuery, gameDB, fuseOptions)
 
 // Selected games list
-const gameList = ref<Game[]>([]);
+// The games the user added stay until removed: restored from the last session, saved on every change.
+const gameList = ref<Game[]>(loadSavedGames());
 // Every game currently running (via a dummy process or RPC).
 const { rpcGameUid, playingGames, recomputeRunning } = useRunningState(gameList);
+
+// Save when the list itself changes (not on running/stopped), and refresh the saved entries from
+// Discord's list whenever a newer one has loaded.
+watch(() => serializeGames(gameList.value), () => saveGames(gameList.value));
+watch(gameDB, (list) => {
+    if (list.length > 0) {
+        refreshSavedGames(gameList.value, list);
+    }
+}, { immediate: true });
 const selectedGameId = ref<string | null | undefined>(null);
 
 const selectedGame = computed(() => {
@@ -121,9 +132,10 @@ function openSearchResults() {
 // Function to add a game to the selected list
 function addGameToList(game: Game) {
     if (!gameList.value.some(g => g.id === game.id)) {
+        // A clean copy: sharing objects with Discord's list would leak running state into it.
         gameList.value.push({
             uid: randomString(),
-            ...game
+            ...cloneGame(game),
         });
     }
 
