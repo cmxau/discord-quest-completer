@@ -4,6 +4,7 @@ import { Pages, useGlobalState } from './composables/app-state';
 import HomeView from './pages/HomeView.vue';
 import Diagnostics from './pages/Diagnostics.vue';
 import Settings from './pages/Settings.vue';
+import CustomActivity from './pages/CustomActivity.vue';
 
 const appState = useGlobalState();
 const { page } = appState;
@@ -14,6 +15,7 @@ const { page } = appState;
   <MainLayout>
     <HomeView v-show="page === Pages.HOME"/>
     <Diagnostics v-show="page === Pages.DIAGNOSTICS"/>
+    <CustomActivity v-show="page === Pages.ACTIVITY"/>
     <Settings v-if="page === Pages.SETTINGS"/>
   </MainLayout>
 </template>

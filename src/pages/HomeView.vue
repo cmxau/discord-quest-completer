@@ -45,7 +45,7 @@ const {
     isReadyDiscord,
     allFetchDone,
 } = useFetchGameList()
-const { addLog, refreshRequest, isGameListLoading, selectedGameLabel, page } = useGlobalState();
+const { addLog, refreshRequest, isGameListLoading, selectedGameLabel, page, rpcOwner } = useGlobalState();
 const { settings } = useSettings();
 watch(refreshRequest, () => fetchGameList());
 watch(
@@ -337,6 +337,7 @@ async function stopAll() {
 
 // Clear every "connected via RPC" flag, e.g. when the connection fails or is dropped.
 function resetRPCState() {
+    if (rpcOwner.value === 'game') rpcOwner.value = null;
     isConnectedToRPC.value = false;
     isConnecting.value = false;
     rpcGameUid.value = null;
@@ -361,6 +362,7 @@ async function handleTestRPC(game: Game | null) {
         
         isConnectedToRPC.value = false;
         rpcGameUid.value = null;
+        if (rpcOwner.value === 'game') rpcOwner.value = null;
         recomputeRunning(game!);
         isConnecting.value = false;
         return;
@@ -376,6 +378,7 @@ async function continueRPCRisk(game: Game | null) {
     const gameToTest = gameList.value.find(g => g.uid === gameUid);
     if (gameToTest) {
         isConnecting.value = true;
+        rpcOwner.value = 'game'; // a custom activity, if one is showing, is replaced by this
         invoke('connect_to_discord_rpc_3', {
             activity_json: JSON.stringify({
                 app_id: gameToTest.id,
@@ -556,6 +559,13 @@ function showDialog(key: DialogKey) {
 function hideDialog() {
     dialogRef.value?.close();
 }
+
+// A custom activity took over the one Rich Presence connection.
+watch(rpcOwner, (owner) => {
+    if (owner === 'custom' && (isConnectedToRPC.value || isConnecting.value)) {
+        resetRPCState();
+    }
+});
 
 // ---- Keyboard shortcuts (only on this page) ----
 const searchInputRef = useTemplateRef<HTMLInputElement>('searchInputRef');

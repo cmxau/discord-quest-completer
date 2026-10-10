@@ -5,6 +5,7 @@ export const Pages = {
     HOME: 'home',
     DIAGNOSTICS: 'diagnostics',
     SETTINGS: 'settings',
+    ACTIVITY: 'activity',
 } as const
 export type Pages = typeof Pages[keyof typeof Pages]
 export interface AppLogObject {
@@ -29,6 +30,8 @@ export interface UseGlobalStateReturn {
     selectedGameLabel: ShallowRef<string>,
     isGameListLoading: ShallowRef<boolean>,
     requestGameListRefresh: () => void,
+    /** Who owns the single Rich Presence connection: a game's Test RPC, a custom activity, or nobody. */
+    rpcOwner: ShallowRef<'game' | 'custom' | null>,
 }
 export const useGlobalState = createGlobalState(
   () => {
@@ -41,6 +44,7 @@ export const useGlobalState = createGlobalState(
     const refreshRequest = shallowRef(0)
     const selectedGameLabel = shallowRef('')
     const isGameListLoading = shallowRef(false)
+    const rpcOwner = shallowRef<'game' | 'custom' | null>(null)
     function requestGameListRefresh() {
       refreshRequest.value++
     }
@@ -85,7 +89,8 @@ export const useGlobalState = createGlobalState(
         refreshRequest,
         selectedGameLabel,
         isGameListLoading,
-        requestGameListRefresh
+        requestGameListRefresh,
+        rpcOwner
     } as UseGlobalStateReturn
   }
 )

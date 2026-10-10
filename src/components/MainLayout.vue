@@ -12,8 +12,12 @@ const { page, setPage } = useGlobalState();
 // The terminal icon opens Diagnostics and the gear opens Settings; clicking the open one again
 // returns to the main page, and the house always goes there.
 const isHome = computed(() => page.value === Pages.HOME);
+const isActivity = computed(() => page.value === Pages.ACTIVITY);
 const isDiagnostics = computed(() => page.value === Pages.DIAGNOSTICS);
 const isSettings = computed(() => page.value === Pages.SETTINGS);
+function toggleActivity() {
+  setPage(isActivity.value ? Pages.HOME : Pages.ACTIVITY);
+}
 function toggleDiagnostics() {
   setPage(isDiagnostics.value ? Pages.HOME : Pages.DIAGNOSTICS);
 }
@@ -38,6 +42,17 @@ function toggleSettings() {
             @click="setPage(Pages.HOME)"
           >
             <svg class="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9.2 10 3l7 6.2V16a1 1 0 0 1-1 1h-3.5v-4.5h-5V17H4a1 1 0 0 1-1-1V9.2Z"/></svg>
+          </button>
+
+          <button
+            class="btn-ghost !px-2 !py-1.5"
+            :class="isActivity ? '!border-indigo-500/50 !bg-indigo-500/10 !text-indigo-600 dark:!text-indigo-400' : ''"
+            :title="isActivity ? 'Back to games' : 'Custom activity'"
+            :aria-label="isActivity ? 'Back to games' : 'Open custom activity'"
+            :aria-pressed="isActivity"
+            @click="toggleActivity()"
+          >
+            <svg class="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2.5 11.7 7l4.8.4-3.7 3.1 1.2 4.7L10 12.7l-4 2.5 1.2-4.7L3.5 7.4 8.3 7 10 2.5Z"/></svg>
           </button>
 
           <button
