@@ -22,10 +22,17 @@
 - **Search 24,000+ games** from Discord's own detectable-games list and keep the ones you care about in a sidebar.
 - **Launch a stand-in for any game.** A few-KB dummy window is placed where Discord looks for the game, so there is nothing to download or install.
 - **Steam library launch** for newer quests that pair a running game with a Steam install. The temporary Steam entry is tracked and removed again when you stop. See [How it works](docs/how-it-works.md).
-- **Run several games at once.** The status card shows everything that is running (green) or idle (orange), with one Stop button. It stays in sync if you close a dummy window yourself.
+- **Run several games at once.** Press **Select** above the game list, tick the games and press **Run selected**. The status card shows everything that is running (green) or idle (orange), with one Stop button. It stays in sync if you close a dummy window yourself.
+- **Auto-stop.** Each game stops by itself after a set time (20 minutes by default, changeable per game) so a dummy is never left running.
+- **Favorites, filter and "last used"** keep a long list easy to use. Shortcuts: `Ctrl+F` filters your games, `Ctrl+Enter` runs the selected games, `Esc` clears the filter or leaves Select.
+- **Custom activity.** Show your own Rich Presence status, such as "Playing ..." or "Watching ...", with your own text and a timer, and save presets. It does not complete quests.
+- **One window.** Starting the app a second time just brings the running one forward.
+- **Warns you when Discord isn't running**, and tells you when a newer release is available.
+- **Runs in the tray.** Optionally start with Windows, start minimized and hide to the tray when you close the window.
+- **Steam entries panel** in Settings lists everything the app added to your Steam library, with Remove and Remove all. Entries are also removed when the app quits, unless you turn on "Keep Steam entries after a game stops".
 - **Always up to date.** The game list is loaded from Discord first, then a daily GitHub Pages mirror, then a copy bundled with the app.
-- **Light and dark themes**, and a Diagnostics page with a Rich Presence test and the app log.
-- **Report a bug or request a feature from the app.** The speech-bubble icon in the header opens a pre-filled issue on GitHub in your browser.
+- **Settings page** for the theme (light, dark or follow Windows), startup and tray, auto-stop, cleanup, the game list and updates. A short **How to use** guide is in Settings too. A Diagnostics page with a Rich Presence test and the app log.
+- **Report a bug or request a feature from the app.** The Feedback section in Settings opens a pre-filled issue on GitHub in your browser.
 
 ## Installation
 
@@ -99,7 +106,7 @@ Games can be added locally by editing `src/assets/custom-games.json`, which is m
 
 ### Bugs and feature requests
 
-The easiest way is the **Feedback** menu (speech-bubble icon in the app's header):
+The easiest way is the **Feedback** section in the app's **Settings** (gear icon in the header):
 
 - **Report a bug** opens the bug form with your app version, Windows version, the selected game and the recent app log already filled in.
 - **Request a feature** opens the feature form with the app version filled in.
