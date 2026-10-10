@@ -158,6 +158,39 @@ fn save_registry(path: &Path, entries: &[SteamFake]) -> Result<(), String> {
     fs::write(path, text).map_err(|e| format!("Failed to write Steam fake registry: {}", e))
 }
 
+/// What the "Steam entries" panel shows for one fake install.
+#[derive(Serialize, Debug, PartialEq)]
+pub struct FakeSummary {
+    pub steam_id: String,
+    /// The game's folder under `steamapps/common` (empty if it can't be told).
+    pub folder_name: String,
+    pub exe_name: String,
+    pub exe_path: String,
+    pub acf_path: String,
+}
+
+/// Every fake install currently recorded in the registry.
+pub fn list_fakes(registry_path: &Path) -> Result<Vec<FakeSummary>, String> {
+    Ok(load_registry(registry_path)?
+        .into_iter()
+        .map(|fake| {
+            let mut parts = fake.exe_path.components().map(|c| c.as_os_str().to_string_lossy().to_string());
+            let folder_name = parts
+                .by_ref()
+                .find(|part| part.eq_ignore_ascii_case("common"))
+                .and_then(|_| parts.next())
+                .unwrap_or_default();
+            FakeSummary {
+                steam_id: fake.steam_id,
+                folder_name,
+                exe_name: fake.exe_path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default(),
+                exe_path: fake.exe_path.to_string_lossy().to_string(),
+                acf_path: fake.acf_path.to_string_lossy().to_string(),
+            }
+        })
+        .collect())
+}
+
 // ---------------------------------------------------------------------------------------------
 // Manifest
 // ---------------------------------------------------------------------------------------------
@@ -310,7 +343,8 @@ fn dir_is_empty(path: &Path) -> bool {
 // ---------------------------------------------------------------------------------------------
 
 /// Create the fake install (manifest + dummy exe) and record it. Refuses to touch anything that
-/// looks like a real install.
+/// looks like a real install. (The app itself always goes through `prepare_fake_with_build`.)
+#[cfg(test)]
 pub fn prepare_fake(
     steamapps: &Path,
     registry_path: &Path,
@@ -352,6 +386,12 @@ pub fn prepare_fake_with_build(
     }
 
     let mut registry = load_registry(registry_path)?;
+    // A kept entry for this game with a different folder or exe name: remove the old files first,
+    // or they would be left behind untracked.
+    if registry.iter().any(|e| e.steam_id == steam_id && e.exe_path != exe_path) {
+        cleanup_fake(steamapps, registry_path, steam_id)?;
+        registry = load_registry(registry_path)?;
+    }
     let existing = registry.iter().position(|e| e.steam_id == steam_id);
 
     // Decide what is ours and what is not before writing anything.
@@ -636,6 +676,46 @@ mod tests {
         assert!(!p.game_dir.exists());
         assert!(e.steamapps.join("common").exists(), "common/ existed before, must stay");
         assert_eq!(cleanup_fake(&e.steamapps, &e.registry, "4080220"), Ok(false));
+        let _ = fs::remove_dir_all(&e.root);
+    }
+
+    #[test]
+    fn launching_again_with_another_folder_removes_the_old_files() {
+        let e = env("moved");
+        let first = prepare(&e, "5", "Old Folder", "old.exe").unwrap();
+        assert!(first.exe_path.exists());
+
+        // a kept entry, launched again with different names
+        let second = prepare(&e, "5", "New Folder", "new.exe").unwrap();
+        assert!(second.exe_path.exists());
+        assert!(!first.exe_path.exists(), "the old exe must not be left behind");
+        assert!(!first.game_dir.exists(), "the old folder must not be left behind");
+        assert_eq!(list_fakes(&e.registry).unwrap().len(), 1);
+
+        // same names again is a plain re-launch and keeps working
+        let third = prepare(&e, "5", "New Folder", "new.exe").unwrap();
+        assert!(third.exe_path.exists() && third.acf_path.exists());
+
+        cleanup_fake(&e.steamapps, &e.registry, "5").unwrap();
+        assert!(!second.game_dir.exists() && !third.acf_path.exists());
+        let _ = fs::remove_dir_all(&e.root);
+    }
+
+    #[test]
+    fn lists_what_was_created() {
+        let e = env("list");
+        assert_eq!(list_fakes(&e.registry), Ok(vec![]), "no registry yet means nothing to list");
+
+        prepare(&e, "4080220", "EA SPORTS FC 27", "fc27.exe").unwrap();
+        let fakes = list_fakes(&e.registry).unwrap();
+        assert_eq!(fakes.len(), 1);
+        assert_eq!(fakes[0].steam_id, "4080220");
+        assert_eq!(fakes[0].folder_name, "EA SPORTS FC 27");
+        assert_eq!(fakes[0].exe_name, "fc27.exe");
+        assert!(fakes[0].acf_path.ends_with("appmanifest_4080220.acf"));
+
+        cleanup_fake(&e.steamapps, &e.registry, "4080220").unwrap();
+        assert_eq!(list_fakes(&e.registry), Ok(vec![]));
         let _ = fs::remove_dir_all(&e.root);
     }
 

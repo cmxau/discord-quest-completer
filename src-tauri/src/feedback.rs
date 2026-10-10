@@ -9,7 +9,7 @@ use std::process::Command;
 const NEW_ISSUE_URL: &str = "https://github.com/cmxau/discord-quest-completer/issues/new";
 
 /// Windows' CREATE_NO_WINDOW, so no console window flashes when a helper process starts.
-const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+pub const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 /// Is this exactly the project's new-issue page, optionally with a (percent-encoded) query string?
 pub fn is_allowed_issue_url(url: &str) -> bool {
@@ -53,10 +53,15 @@ pub fn open_issue_page(url: String) -> Result<(), String> {
     if !is_allowed_issue_url(&url) {
         return Err("Only this project's new-issue page can be opened".to_string());
     }
+    open_in_browser(&url)
+}
+
+/// Hand a URL to the default browser. Callers must have checked it against an allowlist first.
+pub fn open_in_browser(url: &str) -> Result<(), String> {
     // rundll32 hands the URL to the default browser without going through a shell, so characters
     // such as `&` in the query string are passed through untouched.
     Command::new("rundll32")
-        .args(["url.dll,FileProtocolHandler", &url])
+        .args(["url.dll,FileProtocolHandler", url])
         .creation_flags(CREATE_NO_WINDOW)
         .spawn()
         .map(|_| ())

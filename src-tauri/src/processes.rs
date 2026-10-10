@@ -43,10 +43,42 @@ pub fn running_exes() -> Vec<String> {
     running
 }
 
+fn kill_children(map: &mut HashMap<String, Vec<Child>>) -> usize {
+    let mut killed = 0;
+    for (_, list) in map.drain() {
+        for mut child in list {
+            if matches!(child.try_wait(), Ok(None)) && child.kill().is_ok() {
+                killed += 1;
+            }
+            let _ = child.wait(); // reap it so no handle lingers
+        }
+    }
+    killed
+}
+
+/// Kill every dummy process we started and forget them. Returns how many were still running.
+pub fn kill_all() -> usize {
+    kill_children(&mut children())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::process::{Command, Stdio};
+
+    #[test]
+    fn kill_children_stops_running_processes_and_forgets_all() {
+        let mut map: HashMap<String, Vec<Child>> = HashMap::new();
+        let mut done = Command::new("cmd").args(["/C", "exit", "0"]).spawn().unwrap();
+        let _ = done.wait();
+        map.entry("a.exe".into()).or_default().push(sleeper(30));
+        map.entry("a.exe".into()).or_default().push(sleeper(30));
+        map.entry("b.exe".into()).or_default().push(done);
+
+        // the two sleepers were running; the one that already exited is not counted
+        assert_eq!(kill_children(&mut map), 2);
+        assert!(map.is_empty());
+    }
 
     fn sleeper(seconds: u32) -> Child {
         Command::new("ping")

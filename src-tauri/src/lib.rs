@@ -11,6 +11,7 @@ mod processes;
 mod rpc;
 mod runner;
 mod steam;
+mod system;
 
 // Global static instance of the Discord client
 static DISCORD_CLIENT: OnceCell<Mutex<Option<rpc::Client>>> = OnceCell::new();
@@ -378,41 +379,132 @@ async fn open_steam_folder(install_dir: String, exe_path: Option<String>) -> Res
     cmd.spawn().map(|_| ()).map_err(|e| format!("Failed to open Explorer: {}", e))
 }
 
-/// Stop the fake game's process and remove the manifest, folder and exe we created for it.
+/// Kill the fake game's process, then remove the manifest, folder and exe we created for it. The
+/// process needs a moment to release the exe before it can be deleted, so this retries briefly.
+fn stop_and_cleanup(steamapps: &Path, registry: &Path, steam_id: &str, exe_filename: &str) -> Result<(), String> {
+    use std::os::windows::process::CommandExt;
+
+    let _ = std::process::Command::new("taskkill")
+        .args(["/F", "/IM", exe_filename])
+        .creation_flags(feedback::CREATE_NO_WINDOW)
+        .output();
+
+    let mut last_error = String::new();
+    for _ in 0..10 {
+        match steam::cleanup_fake(steamapps, registry, steam_id) {
+            Ok(_) => return Ok(()),
+            Err(e) => {
+                last_error = e;
+                std::thread::sleep(std::time::Duration::from_millis(300));
+            }
+        }
+    }
+    Err(last_error)
+}
+
+/// Stop the fake game's process and, unless the user keeps Steam entries, remove the manifest, folder
+/// and exe we created for it. Returns whether the entry was removed.
 #[tauri::command(rename_all = "snake_case")]
-async fn stop_steam_game(handle: AppHandle, steam_id: String, exe_filename: String) -> Result<(), String> {
+async fn stop_steam_game(handle: AppHandle, steam_id: String, exe_filename: String) -> Result<bool, String> {
+    use std::os::windows::process::CommandExt;
+
+    if system::KEEP_STEAM_ENTRIES.load(std::sync::atomic::Ordering::Relaxed) {
+        let _ = std::process::Command::new("taskkill")
+            .args(["/F", "/IM", &exe_filename])
+            .creation_flags(feedback::CREATE_NO_WINDOW)
+            .output();
+        return Ok(false);
+    }
+
+    let steamapps = steam::find_steamapps_dir().ok_or_else(|| "Steam installation not found".to_string())?;
+    let registry = steam_registry_path(&handle)?;
+
+    tauri::async_runtime::spawn_blocking(move || stop_and_cleanup(&steamapps, &registry, &steam_id, &exe_filename).map(|_| true))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+/// Every fake Steam install the app has recorded (for the Settings panel).
+#[tauri::command(rename_all = "snake_case")]
+async fn list_steam_fakes(handle: AppHandle) -> Result<Vec<steam::FakeSummary>, String> {
+    steam::list_fakes(&steam_registry_path(&handle)?)
+}
+
+/// Stop and remove one recorded fake install, or all of them when `steam_id` is empty. Returns how
+/// many were removed; the error lists the ones that could not be (e.g. the exe is still in use).
+#[tauri::command(rename_all = "snake_case")]
+async fn remove_steam_fakes(handle: AppHandle, steam_id: Option<String>) -> Result<usize, String> {
     let steamapps = steam::find_steamapps_dir().ok_or_else(|| "Steam installation not found".to_string())?;
     let registry = steam_registry_path(&handle)?;
 
     tauri::async_runtime::spawn_blocking(move || {
-        let _ = std::process::Command::new("taskkill")
-            .args(["/F", "/IM", &exe_filename])
-            .output();
-
-        // The process needs a moment to release the exe before it can be deleted.
-        let mut last_error = String::new();
-        for _ in 0..10 {
-            match steam::cleanup_fake(&steamapps, &registry, &steam_id) {
-                Ok(_) => return Ok(()),
-                Err(e) => {
-                    last_error = e;
-                    std::thread::sleep(std::time::Duration::from_millis(300));
-                }
+        let fakes: Vec<_> = steam::list_fakes(&registry)?
+            .into_iter()
+            .filter(|fake| steam_id.as_deref().map_or(true, |id| fake.steam_id == id))
+            .collect();
+        let (mut removed, mut errors) = (0, Vec::new());
+        for fake in fakes {
+            match stop_and_cleanup(&steamapps, &registry, &fake.steam_id, &fake.exe_name) {
+                Ok(()) => removed += 1,
+                Err(e) => errors.push(format!("{} ({}): {}", fake.folder_name, fake.steam_id, e)),
             }
         }
-        Err(last_error)
+        if errors.is_empty() { Ok(removed) } else { Err(errors.join("; ")) }
     })
     .await
     .map_err(|e| e.to_string())?
 }
 
+/// Quitting: stop the dummy games and remove the Steam entries they made, if the user wants that.
+fn on_exit(app: &AppHandle) {
+    if !system::STOP_ON_EXIT.load(std::sync::atomic::Ordering::Relaxed) {
+        return;
+    }
+    let killed = processes::kill_all();
+    if system::KEEP_STEAM_ENTRIES.load(std::sync::atomic::Ordering::Relaxed) {
+        return; // the user wants the Steam entries to stay
+    }
+    let (Some(steamapps), Ok(registry)) = (steam::find_steamapps_dir(), steam_registry_path(app)) else {
+        return;
+    };
+    if killed > 0 {
+        std::thread::sleep(std::time::Duration::from_millis(400)); // let Windows release the exes
+    }
+    for _ in 0..3 {
+        let (_, kept) = steam::cleanup_all(&steamapps, &registry);
+        if kept == 0 {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(400));
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let app = tauri::Builder::default()
+        // Must be first: a second launch (for example "start with Windows" plus a manual start)
+        // just brings the running window forward and exits.
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            system::show_main_window(app);
+        }))
         .plugin(tauri_plugin_dialog::init())
+        .on_window_event(|window, event| {
+            // With "close to tray" on, the close button only hides the window.
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                if system::CLOSE_TO_TRAY.load(std::sync::atomic::Ordering::Relaxed) {
+                    api.prevent_close();
+                    let _ = window.hide();
+                }
+            }
+        })
         .setup(|app| {
+            system::load_behavior(app.handle());
+            system::setup_tray(app)?;
+            system::hide_window_if_started_minimized(app);
             // Remove fake Steam installs left behind if the app was closed while a game was running.
-            if let (Some(steamapps), Ok(registry)) = (steam::find_steamapps_dir(), steam_registry_path(app.handle())) {
+            // (Skipped when the user keeps Steam entries: those are meant to stay until removed.)
+            let keep = system::KEEP_STEAM_ENTRIES.load(std::sync::atomic::Ordering::Relaxed);
+            if let (false, Some(steamapps), Ok(registry)) = (keep, steam::find_steamapps_dir(), steam_registry_path(app.handle())) {
                 let (cleaned, kept) = steam::cleanup_all(&steamapps, &registry);
                 if cleaned + kept > 0 {
                     println!("Steam fake cleanup: {} removed, {} still in use", cleaned, kept);
@@ -432,10 +524,26 @@ pub fn run() {
             launch_steam_game,
             stop_steam_game,
             open_steam_folder,
+            list_steam_fakes,
+            remove_steam_fakes,
+            system::set_behavior,
+            system::discord_status,
+            system::check_for_update,
+            system::open_release_page,
+            system::open_link,
+            system::export_log,
+            system::get_autostart,
+            system::set_autostart,
             feedback::open_issue_page,
             feedback::windows_version,
             feedback::current_user_name
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application");
+
+    app.run(|handle, event| {
+        if let tauri::RunEvent::Exit = event {
+            on_exit(handle);
+        }
+    });
 }
