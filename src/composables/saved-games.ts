@@ -2,7 +2,7 @@ import { randomString } from '@/utils/random-string';
 import type { Game, GameExecutable } from '@/types/types';
 
 // The list of games the user added is kept in the webview's local storage so it survives restarts.
-// Only what identifies a game is stored. Runtime state (running, installed) is never saved, and the
+// Only what identifies a game, plus the user's own marks (favorite, last used), is stored. Runtime state (running, installed) is never saved, and the
 // Discord list is the source of truth for everything else: saved entries are refreshed from it.
 const STORAGE_KEY = 'discord-quest-completer.games.v1';
 
@@ -24,6 +24,8 @@ export function cloneGame(game: Game): Game {
         themes: [...(game.themes ?? [])],
         third_party_skus: (game.third_party_skus ?? []).map(sku => ({ distributor: sku.distributor, id: sku.id })),
         executables: (game.executables ?? []).map(cloneExecutable),
+        ...(game.favorite ? { favorite: true } : {}),
+        ...(typeof game.last_used === 'number' && Number.isFinite(game.last_used) ? { last_used: game.last_used } : {}),
     };
 }
 

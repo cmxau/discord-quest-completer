@@ -102,15 +102,18 @@ export async function launchSteamGame(game: Game, steamId: string, installDir: s
     return launched;
 }
 
-/** Stop the dummy process and remove everything created in the Steam library for this game. */
-export async function stopSteamGame(game: Game) {
+/**
+ * Stop the dummy process. Everything created in the Steam library for this game is removed too,
+ * unless the user keeps Steam entries. Resolves to whether the entry was removed.
+ */
+export async function stopSteamGame(game: Game): Promise<boolean> {
     const steamId = getSteamId(game);
     const exe = game.steam_exe;
     if (!steamId || !exe) {
-        return;
+        return false;
     }
     try {
-        await invoke('stop_steam_game', { steam_id: steamId, exe_filename: exe });
+        return await invoke<boolean>('stop_steam_game', { steam_id: steamId, exe_filename: exe });
     } finally {
         game.steam_exe = undefined;
         game.is_running = game.executables.some(executable => executable.is_running);

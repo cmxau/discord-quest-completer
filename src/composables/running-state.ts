@@ -53,9 +53,10 @@ export function useRunningState(gameList: Ref<Game[]>) {
                     }
                 }
                 if (game.steam_exe && !alive.has(game.steam_exe.toLowerCase())) {
-                    addLog('info', `${game.name} (${game.steam_exe}) exited, removing its Steam library entry`);
+                    addLog('info', `${game.name} (${game.steam_exe}) exited`);
                     try {
-                        await stopSteamGame(game); // also clears game.steam_exe
+                        const removed = await stopSteamGame(game); // also clears game.steam_exe
+                        addLog('info', removed ? `Removed Steam library entry for ${game.name}` : `Steam library entry for ${game.name} is kept`);
                     } catch (error) {
                         addLog('error', `Failed to clean up Steam library entry for ${game.name}: ${error}`);
                     }

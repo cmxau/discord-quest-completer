@@ -16,6 +16,11 @@ export function executableDirectory(name: string, separator: string): string {
     return pathSegments(name).slice(0, -1).join(separator);
 }
 
+/** Windows rejects these in a file name. */
+export function isValidExecutablePath(name: string): boolean {
+    return !['>', '<', ':', '"', '|', '?', '*'].some(char => name.includes(char));
+}
+
 /** Breadcrumb parts for display: the folders, then the file name without its extension. */
 export function executableBreadcrumbs(name: string): string[] {
     const segments = pathSegments(name);

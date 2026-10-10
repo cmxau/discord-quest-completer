@@ -49,7 +49,7 @@
 import { GameActionsKey, getCurrentOS } from '@/constants/constants';
 import { GameActionsProvider, type Game, type GameExecutable } from '@/types/types';
 import { path } from '@tauri-apps/api';
-import { executableBreadcrumbs, executableDirectory, executableFileName } from '@/utils/executable-path';
+import { executableBreadcrumbs, executableDirectory, executableFileName, isValidExecutablePath } from '@/utils/executable-path';
 import { computed, inject } from 'vue';
 
 const props = defineProps<{
@@ -63,13 +63,8 @@ const emit = defineEmits<{
 
 const gameActions = inject<GameActionsProvider>(GameActionsKey);
 
-function isValidPath(name: string) {
-    const illegalChars = ['>', '<', ':', '"', '|', '?', '*'];
-    return !illegalChars.some(char => name.includes(char));
-}
-
 const validExecutables = computed(() =>
-    props.game.executables.filter(executable => isValidPath(executable.name))
+    props.game.executables.filter(executable => isValidExecutablePath(executable.name))
 );
 
 const currentPlatform = getCurrentOS();

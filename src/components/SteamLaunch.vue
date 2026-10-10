@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue';
 import { invoke } from '@tauri-apps/api/core';
 import { ask } from '@tauri-apps/plugin-dialog';
 import { useGlobalState } from '@/composables/app-state';
+import { useSettings } from '@/composables/settings';
 import {
     defaultInstallFolder, fetchSteamInfo, getSteamId, guessExeName, launchSteamGame, type SteamInfo,
 } from '@/composables/steam-launch';
@@ -11,6 +12,7 @@ import type { Game } from '@/types/types';
 const props = defineProps<{ game: Game }>();
 
 const { addLog } = useGlobalState();
+const { settings } = useSettings();
 
 const steamId = computed(() => getSteamId(props.game));
 const info = ref<SteamInfo | null>(null);
@@ -70,9 +72,12 @@ async function confirmSteamChange(): Promise<boolean> {
         return true;
     }
     const ok = await ask(
-        'This adds a temporary fake install of this game to your Steam library '
+        'This adds a fake install of this game to your Steam library '
         + '(a manifest file and a folder with a dummy exe).\n\n'
-        + 'It is removed again when you press Stop. Games Steam already has installed are never touched.\n\n'
+        + (settings.keepSteamEntries
+            ? 'It stays there after you press Stop until you remove it in Settings. '
+            : 'It is removed again when you press Stop. ')
+        + 'Games Steam already has installed are never touched.\n\n'
         + 'Steam may show the game as installed while it runs. Do not launch it from Steam.',
         { title: 'Add to Steam library?', kind: 'warning', okLabel: 'Continue', cancelLabel: 'Cancel' },
     );
@@ -126,7 +131,7 @@ async function launch() {
             <span class="chip">App {{ steamId }}</span>
         </div>
         <p class="mb-3 text-xs text-zinc-500 dark:text-zinc-400">
-            Newer quests check for a Steam install. This puts the dummy exe where Steam keeps the game, and removes it again when you press Stop.
+            Newer quests check for a Steam install. This puts the dummy exe where Steam keeps the game{{ settings.keepSteamEntries ? '. It stays after you press Stop until you remove it in Settings.' : ', and removes it again when you press Stop.' }}
         </p>
 
         <p v-if="loading" class="text-xs text-zinc-500 dark:text-zinc-400">Looking up the install folder…</p>

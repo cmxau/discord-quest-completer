@@ -22,6 +22,10 @@ export interface Game {
     steam_exe?: string;
     is_running?: boolean;
     is_installed?: boolean;
+    /** Pinned to the top of the sidebar. Saved with the list. */
+    favorite?: boolean;
+    /** When it was last started (ms since epoch). Saved with the list. */
+    last_used?: number;
 }
 
 export interface GameActionsProvider {

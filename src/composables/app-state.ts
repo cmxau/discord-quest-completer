@@ -4,6 +4,7 @@ import { computed, ComputedRef, Ref, ShallowRef, shallowRef } from 'vue'
 export const Pages = {
     HOME: 'home',
     DIAGNOSTICS: 'diagnostics',
+    SETTINGS: 'settings',
 } as const
 export type Pages = typeof Pages[keyof typeof Pages]
 export interface AppLogObject {
