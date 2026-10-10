@@ -48,7 +48,9 @@ export function redactPersonalInfo(text: string, userName = ''): string {
     let out = text;
     const name = userName.trim();
     if (name.length >= 2) {
-        out = out.replace(new RegExp(escapeRegExp(name), 'gi'), '<user>');
+        // Whole words only: a short user name must not eat part of a game title ("Sam" in "Samurai").
+        const word = String.raw`(?<![\p{L}\p{N}])` + escapeRegExp(name) + String.raw`(?![\p{L}\p{N}])`;
+        out = out.replace(new RegExp(word, 'giu'), '<user>');
     }
     return out.replace(/([A-Za-z]:[\\/]+Users[\\/]+)[^\\/\s"'<>|]+/gi, '$1<user>');
 }

@@ -17,7 +17,12 @@
         <div class="card text-zinc-700 dark:text-zinc-300">
             <div class="mb-2 flex items-center justify-between">
                 <h2 class="card-title">Logs</h2>
-                <button class="btn-ghost !px-3 !py-1 text-xs" @click="clearLogs">Clear logs</button>
+                <div class="flex items-center gap-2">
+                    <span v-if="logNotice" class="text-xs text-zinc-500 dark:text-zinc-400" role="status">{{ logNotice }}</span>
+                    <button class="btn-ghost !px-3 !py-1 text-xs" :disabled="logs.length === 0" title="Copy the whole log, ready to paste into an issue" @click="copyTheLog">Copy</button>
+                    <button class="btn-ghost !px-3 !py-1 text-xs" :disabled="logs.length === 0" title="Save the whole log as a text file" @click="exportTheLog">Export…</button>
+                    <button class="btn-ghost !px-3 !py-1 text-xs" @click="clearLogs">Clear logs</button>
+                </div>
             </div>
 
             <div class="max-h-64 overflow-y-auto p-2 rounded">
@@ -52,6 +57,7 @@ import { onMounted, ref } from 'vue';
 import { invoke } from '@tauri-apps/api/core';
 import { emit } from '@tauri-apps/api/event';
 import { useGlobalState } from '@/composables/app-state';
+import { copyLog, exportLog } from '@/composables/log-export';
 
 const ActivityKind = {
     Playing: 0,
@@ -62,7 +68,32 @@ const ActivityKind = {
 
 const isConnected = ref(false);
 
-const { logs, addLog, clearLogs } = useGlobalState();
+const { logs, addLog, clearLogs, selectedGameLabel } = useGlobalState();
+
+// Export or copy the whole log (personal folder names removed) to attach to a bug report.
+const logNotice = ref('');
+let noticeTimer: ReturnType<typeof setTimeout> | undefined;
+function showNotice(text: string) {
+    logNotice.value = text;
+    clearTimeout(noticeTimer);
+    noticeTimer = setTimeout(() => { logNotice.value = ''; }, 4000);
+}
+async function exportTheLog() {
+    try {
+        const saved = await exportLog(logs.value, selectedGameLabel.value);
+        if (saved) showNotice('Saved');
+    } catch (e) {
+        showNotice(`Couldn't save: ${e}`);
+    }
+}
+async function copyTheLog() {
+    try {
+        await copyLog(logs.value, selectedGameLabel.value);
+        showNotice('Copied');
+    } catch (e) {
+        showNotice(`Couldn't copy: ${e}`);
+    }
+}
 
 function discordTest() {
 
