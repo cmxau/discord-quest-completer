@@ -1,6 +1,6 @@
 [package]
 name = "discord-quest-completer"
-version = "26.10.0"
+version = "26.10.1"
 description = "Complete Discord Quests without installing the games"
 authors = ["cmxau"]
 license = "MIT"
