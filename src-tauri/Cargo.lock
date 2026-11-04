@@ -837,7 +837,7 @@ dependencies = [
 
 [[package]]
 name = "discord-quest-completer"
-version = "26.10.2"
+version = "26.11.0"
 dependencies = [
  "discord-sdk",
  "once_cell",
