@@ -61,7 +61,7 @@ pub fn kill_all() -> usize {
     kill_children(&mut children())
 }
 
-#[cfg(test)]
+#[cfg(all(test, windows))] // the tests start cmd / ping
 mod tests {
     use super::*;
     use std::process::{Command, Stdio};

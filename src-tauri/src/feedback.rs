@@ -1,15 +1,9 @@
 //! Support for the in-app "Report a bug" / "Request a feature" menu: opening this project's
-//! new-issue page in the browser, and reading the Windows version to pre-fill the report.
-
-use std::os::windows::process::CommandExt;
-use std::process::Command;
+//! new-issue page in the browser, and reading the OS version to pre-fill the report.
 
 /// The only page the app is allowed to open. The issue forms read their pre-filled values from the
 /// query string, so a link is this page plus `?template=...&version=...`.
 const NEW_ISSUE_URL: &str = "https://github.com/cmxau/discord-quest-completer/issues/new";
-
-/// Windows' CREATE_NO_WINDOW, so no console window flashes when a helper process starts.
-pub const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 /// Is this exactly the project's new-issue page, optionally with a (percent-encoded) query string?
 pub fn is_allowed_issue_url(url: &str) -> bool {
@@ -26,6 +20,7 @@ pub fn is_allowed_issue_url(url: &str) -> bool {
 
 /// Turn the output of `cmd /C ver` ("Microsoft Windows [Version 10.0.26300.1234]") into
 /// "Windows 11 (10.0.26300.1234)". Windows 11 is still version 10.0, told apart by its build number.
+#[cfg_attr(not(windows), allow(dead_code))]
 pub fn parse_windows_version(output: &str) -> String {
     let version: String = output
         .split("Version")
@@ -56,34 +51,18 @@ pub fn open_issue_page(url: String) -> Result<(), String> {
     open_in_browser(&url)
 }
 
-/// Hand a URL to the default browser. Callers must have checked it against an allowlist first.
-pub fn open_in_browser(url: &str) -> Result<(), String> {
-    // rundll32 hands the URL to the default browser without going through a shell, so characters
-    // such as `&` in the query string are passed through untouched.
-    Command::new("rundll32")
-        .args(["url.dll,FileProtocolHandler", url])
-        .creation_flags(CREATE_NO_WINDOW)
-        .spawn()
-        .map(|_| ())
-        .map_err(|e| format!("Failed to open the browser: {}", e))
-}
+pub use crate::platform::open_url as open_in_browser;
 
-/// The Windows version, e.g. "Windows 11 (10.0.26300.1234)", for pre-filling a bug report.
+/// The OS version (the command keeps its original name, `windows_version`), e.g. "Windows 11 (10.0.26300.1234)" or "macOS 15.1", for pre-filling a bug report.
 #[tauri::command]
 pub fn windows_version() -> String {
-    Command::new("cmd")
-        .args(["/C", "ver"])
-        .creation_flags(CREATE_NO_WINDOW)
-        .output()
-        .map(|out| parse_windows_version(&String::from_utf8_lossy(&out.stdout)))
-        .unwrap_or_else(|_| "Windows".to_string())
+    crate::platform::os_version()
 }
 
-
-/// The Windows user name, so the app can remove it from anything it puts in a public report.
+/// The OS user name, so the app can remove it from anything it puts in a public report.
 #[tauri::command]
 pub fn current_user_name() -> String {
-    std::env::var("USERNAME").unwrap_or_default()
+    std::env::var("USERNAME").or_else(|_| std::env::var("USER")).unwrap_or_default()
 }
 #[cfg(test)]
 mod tests {
@@ -138,6 +117,7 @@ mod tests {
         assert_eq!(parse_windows_version("something else entirely"), "Windows");
     }
 
+    #[cfg(windows)]
     #[test]
     fn the_real_windows_version_is_readable() {
         let v = windows_version();

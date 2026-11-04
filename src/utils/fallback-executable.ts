@@ -1,4 +1,4 @@
-import { EXECUTABLE_OS } from '@/constants/constants';
+import { EXECUTABLE_OS, getCurrentOS } from '@/constants/constants';
 import type { Game } from '@/types/types';
 
 /** "Shift at Midnight" -> "ShiftAtMidnight". Returns '' if nothing usable is left (e.g. non-Latin titles). */
@@ -31,8 +31,8 @@ export function withFallbackExecutable(game: Game): Game {
     return {
         ...game,
         executables: [{
-            name: `${base}.exe`,
-            os: EXECUTABLE_OS.WINDOWS,
+            name: getCurrentOS() === EXECUTABLE_OS.WINDOWS ? `${base}.exe` : base,
+            os: getCurrentOS(),
             is_launcher: false,
             is_auto_generated: true,
         }],

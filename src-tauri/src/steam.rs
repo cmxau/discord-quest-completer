@@ -59,8 +59,13 @@ pub struct PreparedGame {
 pub fn find_steamapps_dir() -> Option<PathBuf> {
     let mut candidates: Vec<PathBuf> = Vec::new();
 
+    // Fake Steam installs are Windows-only (they are .exe files), so look nowhere else.
+    if cfg!(not(windows)) {
+        return None;
+    }
+
     // SteamPath is stored in the registry, e.g. "c:/program files (x86)/steam"
-    if let Ok(output) = std::process::Command::new("reg")
+    if let Ok(output) = crate::platform::quiet("reg")
         .args(["query", r"HKCU\Software\Valve\Steam", "/v", "SteamPath"])
         .output()
     {

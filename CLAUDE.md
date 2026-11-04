@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-A **Windows-only** Tauri 2 desktop app (Vue 3 + TypeScript + Tailwind 4 frontend, Rust backend) that completes Discord Quests / shows Rich Presence for games without installing them. It creates a fake "game" executable (a copy of a tiny runner binary, placed at the path Discord detects) and launches it so Discord sees the game as running. It is built on `markterence/discord-quest-completer` (MIT); the original copyright notice in `LICENSE` must be kept.
+A Tauri 2 desktop app (Windows is the primary target; macOS and Linux are supported through `src-tauri/src/platform.rs`, which holds the OS-specific helpers: kill by name, open URL/folder, process list, hidden console windows) (Vue 3 + TypeScript + Tailwind 4 frontend, Rust backend) that completes Discord Quests / shows Rich Presence for games without installing them. It creates a fake "game" executable (a copy of a tiny runner binary, placed at the path Discord detects) and launches it so Discord sees the game as running. It is built on `markterence/discord-quest-completer` (MIT); the original copyright notice in `LICENSE` must be kept.
 
 ## Commands
 
@@ -36,6 +36,6 @@ The runner must be built and copied to `src-tauri/resources/` **before** `tauri 
 - Discord's own Game Detection / activity-sharing setting is stored on Discord's servers, so the app cannot read it; it only checks that Discord is running.
 - Versions in `package.json`, `src-tauri/Cargo.toml` and `src-tauri/tauri.conf.json` should be kept in sync.
 - The app writes game folders next to its executable, so it needs a writable install location. Steam fakes are recorded in `%APPDATA%\io.github.cmxau.discordquestcompleter\steam_fakes.json`.
-- The Feedback section in Settings (`components/FeedbackSection.vue`) opens a pre-filled GitHub issue: `composables/feedback.ts` builds the link (version, Windows version, selected game, recent log with the user name removed, kept under 6500 characters) and `src-tauri/src/feedback.rs` opens it, refusing anything but this repository's new-issue page. The two forms are `.github/ISSUE_TEMPLATE/bug_report.yml` and `feature_request.yml`; the query parameters are their field ids, so renaming a field id there means updating `feedback.ts`.
+- The Feedback section in Settings (`components/FeedbackSection.vue`) opens a pre-filled GitHub issue: `composables/feedback.ts` builds the link (version, OS version via the `windows_version` command (name kept), selected game, recent log with the user name removed, kept under 6500 characters) and `src-tauri/src/feedback.rs` opens it, refusing anything but this repository's new-issue page. The two forms are `.github/ISSUE_TEMPLATE/bug_report.yml` and `feature_request.yml`; the query parameters are their field ids, so renaming a field id there means updating `feedback.ts`.
 - The app icon is drawn by `scripts/make-icon.ps1` into `src-tauri/icons/app-icon-source.png`; regenerate all sizes with `pnpm tauri icon src-tauri/icons/app-icon-source.png` (then delete the generated `android/` and `ios/` folders).
 - `.github/workflows/` has CI, a tag-triggered release, and a daily Pages job that publishes the game-list mirror.
