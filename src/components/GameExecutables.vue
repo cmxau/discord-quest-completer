@@ -69,7 +69,7 @@ const validExecutables = computed(() =>
 
 const currentPlatform = getCurrentOS();
 
-// Windows only: other platforms' executables can't be launched here.
+// Only executables built for this OS can be launched here.
 const filteredExecutables = computed(() =>
     validExecutables.value.filter(executable => executable.os === currentPlatform)
 );

@@ -7,6 +7,7 @@ use std::sync::Mutex;
 use tauri::{path::BaseDirectory, AppHandle, Emitter, Listener, Manager};
 
 mod feedback;
+mod platform;
 mod processes;
 mod rpc;
 mod runner;
@@ -24,6 +25,16 @@ fn runner_resource_name() -> &'static str {
     "data/quest-runner.exe"
 }
 
+/// The program to copy as the fake game. Off Windows there is no separate runner: the app itself
+/// is copied and, started with `--title`, just idles (see `run_as_dummy`).
+fn runner_template(handle: &AppHandle) -> Result<PathBuf, String> {
+    if cfg!(windows) {
+        resolve_runner_template(handle)
+    } else {
+        env::current_exe().map_err(|e| format!("Failed to locate the app: {e}"))
+    }
+}
+
 // Discord application IDs are 64-bit snowflakes. They are passed as strings because a JS number
 // can't represent them exactly, and are validated since they become a folder name.
 fn game_folder_path(exe_dir: &Path, path: &str, app_id: &str) -> Result<PathBuf, String> {
@@ -31,9 +42,45 @@ fn game_folder_path(exe_dir: &Path, path: &str, app_id: &str) -> Result<PathBuf,
         return Err(format!("Invalid app id: {}", app_id));
     }
 
-    let normalized_path = Path::new(path).to_string_lossy().to_string();
+    // `path` is a relative folder inside the game's folder: nothing absolute, no `..`.
+    let mut folder = exe_dir.join("games").join(app_id);
+    for part in path.split(['/', '\\']).filter(|p| !p.is_empty()) {
+        platform::validate_file_name(part).map_err(|_| format!("Invalid game path: {path:?}"))?;
+        folder.push(part);
+    }
+    Ok(folder)
+}
 
-    Ok(exe_dir.join("games").join(app_id).join(normalized_path))
+/// Where the `games` folder lives: next to the exe on Windows (as before); elsewhere in the app's
+/// data folder, because the exe sits inside the .app bundle / install prefix.
+fn games_root(handle: &AppHandle) -> PathBuf {
+    let beside_exe = || env::current_exe().unwrap_or_default().parent().map(Path::to_path_buf).unwrap_or_default();
+    if cfg!(windows) {
+        beside_exe()
+    } else {
+        handle.path().app_local_data_dir().unwrap_or_else(|_| beside_exe())
+    }
+}
+
+/// Where the fake exe goes under the game folder. On macOS Discord lists apps as `roblox.app` and
+/// recognises them by a running binary inside the bundle, so those become `roblox.app/Contents/MacOS/roblox`.
+fn executable_rel_path(executable_name: &str) -> Result<PathBuf, String> {
+    platform::validate_file_name(executable_name)?;
+    Ok(match executable_name.strip_suffix(".app") {
+        Some(stem) if !stem.is_empty() => Path::new(executable_name).join("Contents/MacOS").join(stem),
+        _ => PathBuf::from(executable_name),
+    })
+}
+
+/// Give a fake `X.app` the Info.plist that makes macOS treat it as an application bundle.
+fn write_info_plist(executable_name: &str, game_folder: &Path) {
+    let Some(stem) = executable_name.strip_suffix(".app").filter(|s| !s.is_empty()) else { return };
+    let stem = stem.replace('&', "&amp;");
+    let plist = format!(
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<plist version=\"1.0\"><dict>\n<key>CFBundleExecutable</key><string>{stem}</string>\n<key>CFBundleIdentifier</key><string>dqc.fake.{id}</string>\n<key>CFBundleName</key><string>{stem}</string>\n<key>CFBundlePackageType</key><string>APPL</string>\n</dict></plist>\n",
+        id = stem.chars().filter(|c| c.is_ascii_alphanumeric()).collect::<String>()
+    );
+    let _ = fs::write(game_folder.join(executable_name).join("Contents/Info.plist"), plist);
 }
 
 fn resolve_runner_template(handle: &AppHandle) -> Result<PathBuf, String> {
@@ -50,51 +97,39 @@ async fn create_fake_game(
     executable_name: &str,
     app_id: String,
 ) -> Result<String, String> {
-    // Must create in the same directory as the executable to avoid permission issues
-    // Get the executable directory to look for config file
-    let exe_path: std::path::PathBuf = env::current_exe().unwrap_or_default();
-    let exe_dir = exe_path.parent().unwrap_or_else(|| Path::new(""));
+    let game_folder_path = game_folder_path(&games_root(&handle), path, &app_id)?;
 
-    let game_folder_path = game_folder_path(exe_dir, path, &app_id)?;
+    let target_executable_path = game_folder_path.join(executable_rel_path(executable_name)?);
 
-    println!("Game folder path: {:?}", game_folder_path);
-    println!(
-        "Game full path: {:?}",
-        game_folder_path.join(executable_name)
-    );
-
-    match fs::create_dir_all(&game_folder_path) {
-        Ok(_) => {
-            println!("Successfully created directory: {:?}", game_folder_path);
-        }
+    match fs::create_dir_all(target_executable_path.parent().unwrap_or(&game_folder_path)) {
+        Ok(_) => {}
         Err(e) => return Err(format!("Failed to create game folder: {}", e)),
     };
 
-    let resource_path = resolve_runner_template(&handle)?;
-    println!("Creating dummy game executable from: {:?}", resource_path);
+    let resource_path = runner_template(&handle)?;
 
-    let target_executable_path = game_folder_path.join(executable_name);
     match fs::copy(&resource_path, &target_executable_path) {
-        Ok(_) => Ok(format!(
+        Ok(_) => {
+            write_info_plist(executable_name, &game_folder_path);
+            Ok(format!(
             "Dummy executable copied to: {:?}",
             target_executable_path
-        )),
+        ))
+        }
         Err(e) => Err(format!("Failed to copy dummy executable: {}", e)),
     }
 }
 
 #[tauri::command(rename_all = "snake_case")]
 async fn run_background_process(
+    handle: tauri::AppHandle,
     name: &str,
     path: &str,
     executable_name: &str,
     app_id: String,
 ) -> Result<String, String> {
-    let exe_path = env::current_exe().unwrap_or_default();
-    let exe_dir = exe_path.parent().unwrap_or_else(|| Path::new(""));
-
-    let game_folder_path = game_folder_path(exe_dir, path, &app_id)?;
-    let executable_path = game_folder_path.join(executable_name);
+    let game_folder_path = game_folder_path(&games_root(&handle), path, &app_id)?;
+    let executable_path = game_folder_path.join(executable_rel_path(executable_name)?);
 
     let mut cmd = std::process::Command::new(&executable_path);
     cmd.args(["--title", name]).current_dir(game_folder_path);
@@ -110,21 +145,7 @@ async fn run_background_process(
 
 #[tauri::command(rename_all = "snake_case")]
 async fn stop_process(exec_name: String) -> Result<(), String> {
-    let output = std::process::Command::new("taskkill")
-        .arg("/F")
-        .arg("/IM")
-        .arg(&exec_name)
-        .output()
-        .map_err(|e| format!("Failed to execute taskkill: {}", e))?;
-
-    if output.status.success() {
-        Ok(())
-    } else {
-        Err(format!(
-            "Failed to stop process: {}",
-            String::from_utf8_lossy(&output.stderr)
-        ))
-    }
+    platform::kill_by_name(&exec_name)
 }
 
 /// Lock the global client slot, recovering if a previous holder panicked.
@@ -307,7 +328,7 @@ async fn launch_steam_game(
 ) -> Result<steam::LaunchedSteamGame, String> {
     let steamapps = steam::find_steamapps_dir().ok_or_else(|| "Steam installation not found".to_string())?;
     let registry = steam_registry_path(&handle)?;
-    let runner = resolve_runner_template(&handle)?;
+    let runner = runner_template(&handle)?;
 
     // Fill the manifest from Steam's own build and depot data so it looks like a finished install.
     // If that data can't be fetched, fall back to a minimal manifest instead of failing the launch.
@@ -363,31 +384,17 @@ async fn launch_steam_game(
 /// else the Steam library folder it would be created in. Never opens anything outside the library.
 #[tauri::command(rename_all = "snake_case")]
 async fn open_steam_folder(install_dir: String, exe_path: Option<String>) -> Result<(), String> {
-    use std::os::windows::process::CommandExt;
-
     let steamapps = steam::find_steamapps_dir().ok_or_else(|| "Steam installation not found".to_string())?;
-    let target = steam::resolve_open_target(&steamapps, &install_dir, exe_path.as_deref())?;
-
-    // Explorer wants backslashes; the Steam path from the registry mixes both.
-    let as_windows = |p: &Path| p.to_string_lossy().replace('/', "\\");
-    let mut cmd = std::process::Command::new("explorer.exe");
-    match target {
-        steam::OpenTarget::Select(file) => cmd.raw_arg(format!("/select,\"{}\"", as_windows(&file))),
-        steam::OpenTarget::Folder(dir) => cmd.raw_arg(format!("\"{}\"", as_windows(&dir))),
-    };
-    // Explorer exits with a non-zero code even on success, so only starting it can fail.
-    cmd.spawn().map(|_| ()).map_err(|e| format!("Failed to open Explorer: {}", e))
+    match steam::resolve_open_target(&steamapps, &install_dir, exe_path.as_deref())? {
+        steam::OpenTarget::Select(file) => platform::reveal(&file, true),
+        steam::OpenTarget::Folder(dir) => platform::reveal(&dir, false),
+    }
 }
 
 /// Kill the fake game's process, then remove the manifest, folder and exe we created for it. The
 /// process needs a moment to release the exe before it can be deleted, so this retries briefly.
 fn stop_and_cleanup(steamapps: &Path, registry: &Path, steam_id: &str, exe_filename: &str) -> Result<(), String> {
-    use std::os::windows::process::CommandExt;
-
-    let _ = std::process::Command::new("taskkill")
-        .args(["/F", "/IM", exe_filename])
-        .creation_flags(feedback::CREATE_NO_WINDOW)
-        .output();
+    let _ = platform::kill_by_name(exe_filename);
 
     let mut last_error = String::new();
     for _ in 0..10 {
@@ -406,13 +413,8 @@ fn stop_and_cleanup(steamapps: &Path, registry: &Path, steam_id: &str, exe_filen
 /// and exe we created for it. Returns whether the entry was removed.
 #[tauri::command(rename_all = "snake_case")]
 async fn stop_steam_game(handle: AppHandle, steam_id: String, exe_filename: String) -> Result<bool, String> {
-    use std::os::windows::process::CommandExt;
-
     if system::KEEP_STEAM_ENTRIES.load(std::sync::atomic::Ordering::Relaxed) {
-        let _ = std::process::Command::new("taskkill")
-            .args(["/F", "/IM", &exe_filename])
-            .creation_flags(feedback::CREATE_NO_WINDOW)
-            .output();
+        let _ = platform::kill_by_name(&exe_filename);
         return Ok(false);
     }
 
@@ -481,6 +483,28 @@ fn on_exit(app: &AppHandle) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    #[allow(unused_mut)]
+    let mut context = tauri::generate_context!();
+
+    // Off Windows the fake game is a copy of this binary started as `<exe> --title <name>`. It only
+    // shows an empty window with that title: Discord on macOS ignores processes without a window.
+    #[cfg(not(windows))]
+    if env::args().nth(1).as_deref() == Some("--title") {
+        let title = env::args().nth(2).unwrap_or_default();
+        context.config_mut().app.windows.clear();
+        tauri::Builder::default()
+            .setup(move |app| {
+                tauri::WebviewWindowBuilder::new(app, "dummy", tauri::WebviewUrl::External("about:blank".parse().unwrap()))
+                    .title(&title)
+                    .inner_size(640.0, 400.0)
+                    .build()?;
+                Ok(())
+            })
+            .run(context)
+            .expect("error while running the dummy game");
+        return;
+    }
+
     let app = tauri::Builder::default()
         // Must be first: a second launch (for example "start with Windows" plus a manual start)
         // just brings the running window forward and exits.
@@ -538,7 +562,7 @@ pub fn run() {
             feedback::windows_version,
             feedback::current_user_name
         ])
-        .build(tauri::generate_context!())
+        .build(context)
         .expect("error while building tauri application");
 
     app.run(|handle, event| {
@@ -546,4 +570,24 @@ pub fn run() {
             on_exit(handle);
         }
     });
+}
+
+#[cfg(test)]
+mod path_tests {
+    use super::*;
+
+    #[test]
+    fn game_paths_cannot_leave_the_games_folder() {
+        let root = Path::new("root");
+        assert_eq!(game_folder_path(root, "win64\\bin", "123").unwrap(), root.join("games/123/win64/bin"));
+        assert_eq!(game_folder_path(root, "", "123").unwrap(), root.join("games/123"));
+        for bad in ["..", "../x", "a/../../x", "a\\..\\x", "C:\\x", "a\0b"] {
+            assert!(game_folder_path(root, bad, "123").is_err(), "{bad:?}");
+        }
+        assert!(game_folder_path(root, "", "1/../2").is_err());
+        for bad in ["../x", "a/b", "", ".."] {
+            assert!(executable_rel_path(bad).is_err(), "{bad:?}");
+        }
+        assert!(executable_rel_path("roblox.app").unwrap().ends_with("Contents/MacOS/roblox"));
+    }
 }

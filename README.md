@@ -2,20 +2,30 @@
 
 <p align="center">
   Complete Discord Quests without installing the games.<br />
-  A small Windows desktop app that runs a tiny stand-in for the game so Discord counts it as played.
+  A small desktop app for Windows (also macOS and Linux) that runs a tiny stand-in for the game so Discord counts it as played.
 </p>
 
 <p align="center">
   <a href="https://github.com/cmxau/discord-quest-completer/actions/workflows/ci.yml"><img src="https://github.com/cmxau/discord-quest-completer/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
   <a href="https://github.com/cmxau/discord-quest-completer/releases"><img src="https://img.shields.io/github/v/release/cmxau/discord-quest-completer?include_prereleases" alt="Latest release" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT license" /></a>
-  <img src="https://img.shields.io/badge/platform-Windows-0078D4" alt="Windows" />
+  <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-0078D4" alt="Windows, macOS, Linux" />
 </p>
 
 > [!NOTE]
 > This project builds on
 > [markterence/discord-quest-completer](https://github.com/markterence/discord-quest-completer) by
 > Mark Terence Tiglao. A large part of the code comes from that project. See [Credits](#credits).
+
+## Supported platforms
+
+| Platform | Status |
+| --- | --- |
+| Windows | Primary target and the most tested. Everything works, including Steam library launch. |
+| macOS | Tested. The app uses an overlay title bar with the native traffic lights, and Discord detects the game through a windowed fake game. |
+| Linux | Builds, but untested. |
+
+The Steam library feature (fake Steam installs) is Windows-only. The Steam entries panel in Settings is Windows-only too. Start at login works everywhere (Run key on Windows, a LaunchAgent on macOS, an autostart entry on Linux).
 
 ## Features
 
@@ -28,7 +38,7 @@
 - **Custom activity.** Show your own Rich Presence status, such as "Playing ..." or "Watching ...", with your own text and a timer, and save presets. It does not complete quests.
 - **One window.** Starting the app a second time just brings the running one forward.
 - **Warns you when Discord isn't running**, and tells you when a newer release is available.
-- **Runs in the tray.** Optionally start with Windows, start minimized and hide to the tray when you close the window.
+- **Runs in the tray.** Optionally start at login, start minimized and hide to the tray when you close the window.
 - **Steam entries panel** in Settings lists everything the app added to your Steam library, with Remove and Remove all. Entries are also removed when the app quits, unless you turn on "Keep Steam entries after a game stops".
 - **Always up to date.** The game list is loaded from Discord first, then a daily GitHub Pages mirror, then a copy bundled with the app.
 - **Settings page** for the theme (light, dark or follow Windows), startup and tray, auto-stop, cleanup, the game list and updates. A short **How to use** guide is in Settings too. A Diagnostics page with a Rich Presence test and the app log.
@@ -40,6 +50,8 @@ Download the latest build from the [Releases](https://github.com/cmxau/discord-q
 
 - **Installer** (`.exe` or `.msi`): installs like any other app.
 - **Portable zip**: extract it somewhere you can write to. The app creates its dummy game files next to itself, so avoid places like `C:\Program Files\` or the root of `C:\`.
+
+The release builds below are for Windows. On macOS and Linux, build from source, see [Development](#development).
 
 Requirements: Windows 11 (Windows 10 should work) and Microsoft WebView2, which ships with Windows 11. On older systems install it from [Microsoft](https://developer.microsoft.com/en-us/microsoft-edge/webview2).
 
@@ -71,12 +83,16 @@ next to the app and can be deleted at any time.
 ## Development
 
 Requirements: [Rust](https://www.rust-lang.org/tools/install) with the
-[Tauri prerequisites](https://tauri.app/start/prerequisites/), Node.js 20+ and
-[pnpm](https://pnpm.io/). Windows is required to build the runner.
+[Tauri prerequisites](https://v2.tauri.app/start/prerequisites/), Node.js 20+ and
+[pnpm](https://pnpm.io/).
+
+- **Windows:** the dummy game runner is built from `runner/`, so run `pnpm sync:runner` before `pnpm tauri dev` or `pnpm tauri build`.
+- **macOS:** install the Xcode Command Line Tools. `pnpm sync:runner` is not needed (on non-Windows systems it does nothing): the app copies itself as the fake game.
+- **Linux:** install the usual Tauri system libraries (webkit2gtk and friends, see the prerequisites link above). `pnpm sync:runner` is not needed.
 
 ```bash
 pnpm install
-pnpm sync:runner     # builds the dummy game runner and copies it into src-tauri/resources/
+pnpm sync:runner     # Windows only: builds the dummy game runner and copies it into src-tauri/resources/
 pnpm tauri dev       # start the app with hot reload
 ```
 
@@ -94,7 +110,7 @@ pnpm tauri build                                        # production build and i
 .
 ├── src/             Vue 3 + TypeScript frontend (components, composables, pages, utils)
 ├── src-tauri/       Tauri backend in Rust (process control, Steam library, Discord RPC)
-├── runner/          The dummy game window (a tiny Win32 executable)
+├── runner/          The dummy game window (a tiny Win32 executable, used on Windows)
 ├── scripts/         Build helpers: bundle the runner, regenerate the app icon
 ├── docs/            Documentation
 └── .github/         CI, release and Pages workflows, issue templates

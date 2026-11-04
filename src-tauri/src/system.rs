@@ -1,10 +1,11 @@
 //! App-level helpers behind the Settings page: checking that Discord is running, looking for a
 //! newer release, starting with Windows, and the tray icon / exit behaviour.
 
-use crate::feedback::{open_in_browser, CREATE_NO_WINDOW};
+use crate::platform;
+use crate::feedback::open_in_browser;
 use serde::{Deserialize, Serialize};
-use std::os::windows::process::CommandExt;
 use std::path::Path;
+#[cfg(windows)]
 use std::process::Command;
 use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{
@@ -136,16 +137,18 @@ pub struct DiscordStatus {
 }
 
 const DISCORD_CLIENTS: [(&str, &str); 3] = [
-    ("discord.exe", "Discord"),
-    ("discordptb.exe", "Discord PTB"),
-    ("discordcanary.exe", "Discord Canary"),
+    ("discord", "Discord"),
+    ("discordptb", "Discord PTB"),
+    ("discordcanary", "Discord Canary"),
 ];
 
-/// Find Discord in the output of `tasklist /FO CSV /NH` (one `"Image.exe","pid",...` line per process).
+/// Find Discord in the process list: `tasklist /FO CSV /NH` lines (`"Image.exe","pid",...`) on
+/// Windows, bare process names ("Discord", "Discord PTB") from `ps` elsewhere.
 pub fn parse_discord_status(tasklist_csv: &str) -> DiscordStatus {
     let mut clients: Vec<String> = Vec::new();
     for line in tasklist_csv.lines() {
-        let image = line.trim().trim_start_matches('"').split('"').next().unwrap_or("").to_lowercase();
+        let image = line.trim().trim_start_matches('"').split('"').next().unwrap_or("").to_lowercase().replace(' ', "");
+        let image = image.strip_suffix(".exe").unwrap_or(&image).to_string();
         if let Some((_, name)) = DISCORD_CLIENTS.iter().find(|(exe, _)| *exe == image) {
             if !clients.iter().any(|c| c == name) {
                 clients.push(name.to_string());
@@ -158,12 +161,7 @@ pub fn parse_discord_status(tasklist_csv: &str) -> DiscordStatus {
 #[tauri::command]
 pub async fn discord_status() -> Result<DiscordStatus, String> {
     tauri::async_runtime::spawn_blocking(|| {
-        let out = Command::new("tasklist")
-            .args(["/FO", "CSV", "/NH"])
-            .creation_flags(CREATE_NO_WINDOW)
-            .output()
-            .map_err(|e| format!("Failed to list processes: {}", e))?;
-        Ok(parse_discord_status(&String::from_utf8_lossy(&out.stdout)))
+        platform::process_list().map(|list| parse_discord_status(&list))
     })
     .await
     .map_err(|e| e.to_string())?
@@ -335,9 +333,10 @@ pub async fn export_log(app: AppHandle, contents: String, file_name: String) -> 
 }
 
 // ---------------------------------------------------------------------------------------------
-// Start with Windows
+// Start at sign-in (Windows Run key, macOS LaunchAgent, Linux autostart entry)
 // ---------------------------------------------------------------------------------------------
 
+#[cfg(windows)]
 const RUN_KEY: &str = r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run";
 const RUN_VALUE: &str = "Discord Quest Completer";
 
@@ -346,18 +345,20 @@ pub fn autostart_command(exe: &Path, minimized: bool) -> String {
     format!("\"{}\"{}", exe.display(), if minimized { " --minimized" } else { "" })
 }
 
+#[cfg(windows)]
 fn reg(args: &[&str]) -> Result<std::process::Output, String> {
-    Command::new("reg")
+    platform::quiet("reg")
         .args(args)
-        .creation_flags(CREATE_NO_WINDOW)
         .output()
         .map_err(|e| format!("Failed to run reg: {}", e))
 }
 
+#[cfg(windows)]
 fn autostart_is_set(value: &str) -> bool {
     reg(&["query", RUN_KEY, "/v", value]).map(|out| out.status.success()).unwrap_or(false)
 }
 
+#[cfg(windows)]
 fn autostart_write(value: &str, command: Option<&str>) -> Result<(), String> {
     let out = match command {
         Some(command) => reg(&["add", RUN_KEY, "/v", value, "/t", "REG_SZ", "/d", command, "/f"])?,
@@ -371,6 +372,58 @@ fn autostart_write(value: &str, command: Option<&str>) -> Result<(), String> {
     }
 }
 
+/// The login item file: a LaunchAgent plist on macOS, an XDG autostart entry on Linux.
+#[cfg(not(windows))]
+fn autostart_file() -> Option<std::path::PathBuf> {
+    let home = std::path::PathBuf::from(std::env::var_os("HOME")?);
+    Some(if cfg!(target_os = "macos") {
+        home.join("Library/LaunchAgents/io.github.cmxau.discordquestcompleter.plist")
+    } else {
+        let config = std::env::var_os("XDG_CONFIG_HOME").map(std::path::PathBuf::from).unwrap_or_else(|| home.join(".config"));
+        config.join("autostart/io.github.cmxau.discordquestcompleter.desktop")
+    })
+}
+
+#[cfg(not(windows))]
+fn autostart_is_set(_value: &str) -> bool {
+    autostart_file().is_some_and(|f| f.exists())
+}
+
+/// The login item's text. The exe path is a separate argument/quoted token, never run through a
+/// shell, and a path with control characters (a newline would add keys to the file) is refused.
+#[cfg(not(windows))]
+fn autostart_text(exe: &Path, minimized: bool) -> Result<String, String> {
+    let exe = exe.to_str().filter(|e| !e.chars().any(char::is_control)).ok_or("The app path has unsupported characters")?;
+    Ok(if cfg!(target_os = "macos") {
+        let xml = |s: &str| s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;");
+        let flag = if minimized { "<string>--minimized</string>" } else { "" };
+        format!("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<plist version=\"1.0\"><dict>\n<key>Label</key><string>io.github.cmxau.discordquestcompleter</string>\n<key>ProgramArguments</key><array><string>{}</string>{flag}</array>\n<key>RunAtLoad</key><true/>\n</dict></plist>\n", xml(exe))
+    } else {
+        // Exec: double-quoted, with " ` $ \ escaped (then \ doubled for the file format) and % doubled.
+        let quoted: String = exe.chars().map(|c| match c {
+            '"' | '`' | '$' => format!("\\\\{c}"),
+            '\\' => "\\\\\\\\".to_string(),
+            '%' => "%%".to_string(),
+            c => c.to_string(),
+        }).collect();
+        format!("[Desktop Entry]\nType=Application\nName=Discord Quest Completer\nExec=\"{quoted}\"{}\n", if minimized { " --minimized" } else { "" })
+    })
+}
+
+#[cfg(not(windows))]
+fn autostart_write(_value: &str, entry: Option<(&Path, bool)>) -> Result<(), String> {
+    let file = autostart_file().ok_or("Could not find the home folder")?;
+    let Some((exe, minimized)) = entry else {
+        return match std::fs::remove_file(&file) {
+            Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e.to_string()),
+            _ => Ok(()), // removed, or already off
+        };
+    };
+    let text = autostart_text(exe, minimized)?;
+    std::fs::create_dir_all(file.parent().unwrap()).map_err(|e| e.to_string())?;
+    std::fs::write(&file, text).map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 pub async fn get_autostart() -> bool {
     tauri::async_runtime::spawn_blocking(|| autostart_is_set(RUN_VALUE)).await.unwrap_or(false)
@@ -381,7 +434,10 @@ pub async fn set_autostart(enabled: bool, minimized: bool) -> Result<(), String>
     tauri::async_runtime::spawn_blocking(move || {
         if enabled {
             let exe = std::env::current_exe().map_err(|e| e.to_string())?;
-            autostart_write(RUN_VALUE, Some(&autostart_command(&exe, minimized)))
+            #[cfg(windows)]
+            return autostart_write(RUN_VALUE, Some(&autostart_command(&exe, minimized)));
+            #[cfg(not(windows))]
+            return autostart_write(RUN_VALUE, Some((&exe, minimized)));
         } else {
             autostart_write(RUN_VALUE, None)
         }
@@ -412,12 +468,17 @@ mod tests {
     }
 
     #[test]
-    fn the_real_task_list_is_readable() {
-        // Whatever is running, asking must not fail; the System process proves the list was parsed.
-        let out = Command::new("tasklist").args(["/FO", "CSV", "/NH"]).creation_flags(CREATE_NO_WINDOW).output().unwrap();
-        let text = String::from_utf8_lossy(&out.stdout);
-        assert!(text.to_lowercase().contains("\"system\""));
+    fn the_real_process_list_is_readable() {
+        // Whatever is running, asking must not fail; the list is never empty.
+        let text = platform::process_list().unwrap();
+        assert!(!text.trim().is_empty());
         let _ = parse_discord_status(&text);
+    }
+
+    #[test]
+    fn finds_discord_in_a_ps_listing() {
+        let ps = "launchd\nDiscord\nDiscord Helper\nDiscord PTB\n";
+        assert_eq!(parse_discord_status(ps).clients, vec!["Discord".to_string(), "Discord PTB".to_string()]);
     }
 
     #[test]
@@ -560,6 +621,21 @@ mod tests {
         assert_eq!(autostart_command(exe, true), r#""C:\Program Files\Quest Completer\app.exe" --minimized"#);
     }
 
+    #[cfg(not(windows))]
+    #[test]
+    fn autostart_entries_keep_hostile_paths_inert() {
+        let exe = Path::new("/tmp/a \"b\" $(x) `y` 50%\\z & <w>/app");
+        let text = autostart_text(exe, true).unwrap();
+        if cfg!(target_os = "macos") {
+            assert!(text.contains("<string>/tmp/a \"b\" $(x) `y` 50%\\z &amp; &lt;w&gt;/app</string><string>--minimized</string>"));
+            assert!(!text.contains("/bin/sh"));
+        } else {
+            assert!(text.contains("Exec=\"/tmp/a \\\\\"b\\\\\" \\\\$(x) \\\\`y\\\\` 50%%\\\\\\\\z & <w>/app\" --minimized\n"));
+        }
+        assert!(autostart_text(Path::new("/tmp/a\nExec=evil"), false).is_err());
+    }
+
+    #[cfg(windows)]
     #[test]
     fn autostart_round_trips_through_the_registry() {
         // A throwaway value name, removed again, so the real setting is never touched.

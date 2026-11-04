@@ -28,9 +28,9 @@ function toggleSettings() {
 
 <template>
   <div class="flex h-dvh flex-col overflow-hidden bg-zinc-50 dark:bg-zinc-950">
-    <header class="z-30 border-b border-zinc-200 bg-white/80 backdrop-blur dark:border-zinc-800 dark:bg-zinc-950/80">
-      <div class="flex items-center justify-between gap-3 px-4 py-2.5">
-        <span class="text-sm font-semibold tracking-tight text-zinc-900 dark:text-white">Quest Completer</span>
+    <header data-tauri-drag-region class="z-30 border-b border-zinc-200 bg-white/80 backdrop-blur dark:border-zinc-800 dark:bg-zinc-950/80">
+      <div data-tauri-drag-region class="flex items-center justify-between gap-3 px-4 py-2.5 mac:pl-[84px]">
+        <span data-tauri-drag-region class="text-sm font-semibold tracking-tight text-zinc-900 dark:text-white">Quest Completer</span>
 
         <div class="flex items-center gap-2">
           <button

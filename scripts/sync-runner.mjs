@@ -9,8 +9,8 @@ const BINARY = "quest-runner.exe";
 const RESOURCES_DIR = "src-tauri/resources";
 
 if (process.platform !== "win32") {
-  console.error(`This project only supports Windows (current platform: ${process.platform})`);
-  process.exit(1);
+  console.log(`No runner needed on ${process.platform}: the app copies itself as the fake game.`);
+  process.exit(0);
 }
 
 const build = spawnSync("cargo", ["build", "--release"], { cwd: RUNNER_DIR, stdio: "inherit", shell: false });

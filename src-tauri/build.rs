@@ -4,7 +4,10 @@ fn main() {
     // Build the Tauri application
     tauri_build::build();
 
-    // Check that the Windows runner exists
+    // Only Windows bundles the runner (other systems copy the app itself as the fake game)
+    if std::env::var("CARGO_CFG_TARGET_OS").as_deref() != Ok("windows") {
+        return;
+    }
     let resource_path = PathBuf::from("resources").join("quest-runner.exe");
 
     // Tell cargo to rerun if the resource file changes

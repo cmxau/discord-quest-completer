@@ -3,11 +3,14 @@
 /* Dark mode is driven by a `dark` class on <html> (toggled from the header), not the OS setting. */
 @custom-variant dark (&:where(.dark, .dark *));
 
+/* macOS only: the window has an overlay title bar, so the header leaves room for the traffic lights. */
+@custom-variant mac (&:where(.macos, .macos *));
+
 html { color-scheme: light; }
 html.dark { color-scheme: dark; }
 
 @layer base {
-  html, body { font-family: ui-sans-serif, system-ui, "Segoe UI Variable", "Segoe UI", Inter, sans-serif; }
+  html, body { font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI Variable", "Segoe UI", Inter, sans-serif; }
   body { @apply bg-zinc-50 text-zinc-700 antialiased dark:bg-zinc-950 dark:text-zinc-300; }
   button { @apply cursor-pointer disabled:cursor-not-allowed disabled:opacity-50; }
   ::-webkit-scrollbar { width: 10px; height: 10px; }
