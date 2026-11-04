@@ -29,8 +29,9 @@ jobs:
       matrix:
         include:
           - { os: windows-latest, name: windows }
-          - { os: macos-latest, name: macos-arm64 }
-          - { os: macos-15-intel, name: macos-x64 }
+          # One universal dmg (Apple Silicon + Intel), built on the Intel runner: the hosted Apple Silicon
+          # runners were often unavailable.
+          - { os: macos-15-intel, name: macos }
           - { os: ubuntu-22.04, name: linux }
     runs-on: ${{ matrix.os }}
     steps:
@@ -44,6 +45,8 @@ jobs:
           cache: pnpm
 
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.name == 'macos' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
 
       - name: Rust cache
         uses: swatinem/rust-cache@v2
@@ -76,7 +79,7 @@ jobs:
 
       # Runs `pnpm build` first (beforeBuildCommand), then produces the platform's installers.
       - name: Build the app
-        run: pnpm tauri build
+        run: pnpm tauri build ${{ matrix.name == 'macos' && '--target universal-apple-darwin' || '' }}
 
       - name: Create the portable zip
         if: matrix.name == 'windows'
@@ -105,8 +108,8 @@ jobs:
         if: startsWith(matrix.name, 'macos')
         uses: actions/upload-artifact@v4
         with:
-          name: files-${{ matrix.name }}
-          path: src-tauri/target/release/bundle/dmg/*.dmg
+          name: files-macos
+          path: src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
 
       - name: Upload Linux files
         if: matrix.name == 'linux'
@@ -139,7 +142,7 @@ jobs:
           body: |
             ### Downloads
             - **Windows:** `*-setup.exe` (recommended), `.msi`, or the portable `discord-quest-completer-win-x64-*.zip` (extract it somewhere you can write to).
-            - **macOS:** `*_aarch64.dmg` (Apple Silicon) or `*_x64.dmg` (Intel). The builds are not signed or notarized: right-click the app and choose Open the first time.
+            - **macOS:** `*_universal.dmg` (Apple Silicon and Intel). The builds are not signed or notarized: right-click the app and choose Open the first time.
             - **Linux:** `.deb`, `.rpm` or `.AppImage`. Untested.
 
             ### Disclaimer
