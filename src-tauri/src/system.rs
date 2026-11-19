@@ -341,6 +341,7 @@ const RUN_KEY: &str = r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run";
 const RUN_VALUE: &str = "Discord Quest Completer";
 
 /// The command Windows runs at sign-in: the exe in quotes, plus `--minimized` to start in the tray.
+#[cfg_attr(not(windows), allow(dead_code))]
 pub fn autostart_command(exe: &Path, minimized: bool) -> String {
     format!("\"{}\"{}", exe.display(), if minimized { " --minimized" } else { "" })
 }

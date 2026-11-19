@@ -481,22 +481,40 @@ fn on_exit(app: &AppHandle) {
     }
 }
 
+/// The fake game's window off Windows is the frontend's `public/dummy.html`, with the title passed
+/// percent-encoded in the query (the page sets it as plain text).
+#[cfg(not(windows))]
+fn dummy_window_url(title: &str) -> tauri::WebviewUrl {
+    let encoded: String = title.bytes().map(|b| if b.is_ascii_alphanumeric() { (b as char).to_string() } else { format!("%{b:02X}") }).collect();
+    tauri::WebviewUrl::App(format!("dummy.html?t={encoded}").into())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     #[allow(unused_mut)]
     let mut context = tauri::generate_context!();
 
-    // Off Windows the fake game is a copy of this binary started as `<exe> --title <name>`. It only
-    // shows an empty window with that title: Discord on macOS ignores processes without a window.
+    // Off Windows the fake game is a copy of this binary started as `<exe> --title <name>`. It shows
+    // the same card as the Windows runner (name, status, Stop): Discord on macOS ignores processes
+    // without a window.
     #[cfg(not(windows))]
     if env::args().nth(1).as_deref() == Some("--title") {
         let title = env::args().nth(2).unwrap_or_default();
         context.config_mut().app.windows.clear();
         tauri::Builder::default()
             .setup(move |app| {
-                tauri::WebviewWindowBuilder::new(app, "dummy", tauri::WebviewUrl::External("about:blank".parse().unwrap()))
+                let handle = app.handle().clone();
+                tauri::WebviewWindowBuilder::new(app, "dummy", dummy_window_url(&title))
                     .title(&title)
                     .inner_size(640.0, 400.0)
+                    // The Stop button navigates to dqc://stop; quit instead of navigating.
+                    .on_navigation(move |url| {
+                        if url.scheme() == "dqc" {
+                            handle.exit(0);
+                            return false;
+                        }
+                        true
+                    })
                     .build()?;
                 Ok(())
             })
