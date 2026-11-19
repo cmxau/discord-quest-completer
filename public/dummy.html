@@ -1,0 +1,22 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Quest Completer</title>
+<style>
+  body { margin: 0; padding: 20px; height: 100vh; box-sizing: border-box; background: #18181b; color: #fafafa;
+         font: 16px -apple-system, system-ui, sans-serif; border-top: 4px solid #6366f1; }
+  .card { background: #27272a; border-radius: 16px; padding: 14px 18px; }
+  .app { font-size: 12px; font-weight: 600; letter-spacing: .04em; color: #a1a1aa; }
+  #name { font-size: 26px; font-weight: 700; margin: 6px 0 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .status { color: #22c55e; }
+  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #22c55e; margin-right: 8px; }
+  p { color: #a1a1aa; margin: 14px 0; }
+  button { float: right; background: #dc2626; color: #fff; border: 0; border-radius: 10px; padding: 8px 24px; font: inherit; cursor: pointer; }
+</style>
+<div class="card">
+  <div class="app">DISCORD QUEST COMPLETER</div>
+  <div id="name"></div>
+  <div class="status"><span class="dot"></span>Running &mdash; Discord should detect this game</div>
+</div>
+<p>Keep this window running while the quest completes.</p>
+<button id="stop">Stop</button>
+<script src="dummy.js"></script>
