@@ -6,7 +6,7 @@
     "main"
   ],
   "permissions": [
-    "dialog:allow-ask"
+    "dialog:allow-ask",
     "core:default",
     "dialog:default",
     "core:window:allow-start-dragging",
